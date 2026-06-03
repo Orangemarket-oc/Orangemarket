@@ -617,6 +617,248 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 /* Map layer tab chips */
 .map-tabs .sch{flex-shrink:0;height:30px;display:flex;align-items:center;justify-content:center;white-space:nowrap}
 </style>
+
+<!-- Firebase SDK - 실제 작동 버전 -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
+  import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, onAuthStateChanged, signOut }
+    from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js';
+  import { getFirestore, collection, addDoc, getDocs, onSnapshot,
+    doc, setDoc, getDoc, updateDoc, query, orderBy, serverTimestamp, where, limit }
+    from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAj42PLwXqBc0dKw6o-mceJEYYZlHCzRoE",
+    authDomain: "orange-market-4d18b.firebaseapp.com",
+    projectId: "orange-market-4d18b",
+    storageBucket: "orange-market-4d18b.firebasestorage.app",
+    messagingSenderId: "712357052515",
+    appId: "1:712357052515:web:3ad98acbb91c889045f856"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // 전역 노출
+  window._auth = auth;
+  window._db = db;
+
+  // 인증 상태 감지
+  onAuthStateChanged(auth, async (user) => {
+    window._currentUser = user || null;
+    if (user) {
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        window._userProfile = snap.exists() ? snap.data() : null;
+        if (window._userProfile) {
+          const nm = document.querySelector('.pnm');
+          if (nm) nm.textContent = window._userProfile.nickname || '이웃';
+        }
+        if (window._userProfile && !window._userProfile.verified) {
+          setTimeout(() => openModal(), 1500);
+        }
+      } catch(e) {}
+    } else {
+      window._userProfile = null;
+    }
+  });
+
+  // SMS 발송
+  window.sendSMS = async function(type) {
+    const id = type === 'login' ? 'loginPhone' : 'signupPhone';
+    const inp = document.getElementById(id);
+    if (!inp) return;
+    const phone = '+1' + inp.value.replace(/\D/g,'');
+    if (phone.length < 12) { alert('전화번호를 정확히 입력해주세요.'); return; }
+    try {
+      if (!window._recaptcha) {
+        window._recaptcha = new RecaptchaVerifier(auth, 'rc-div', {size:'invisible'});
+      }
+      window._confirmResult = await signInWithPhoneNumber(auth, phone, window._recaptcha);
+      const wrap = document.getElementById(type==='login' ? 'loginOtpWrap' : 'signupOtpWrap');
+      if (wrap) wrap.style.display = 'block';
+      // 타이머
+      let s=180; const el=document.getElementById('loginTimer');
+      const t=setInterval(()=>{ s--; if(el) el.textContent=Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60; if(s<=0) clearInterval(t); },1000);
+      alert('인증번호 발송됐습니다!');
+    } catch(e) {
+      window._recaptcha = null;
+      alert('발송 실패: ' + (e.code === 'auth/invalid-phone-number' ? '전화번호를 확인해주세요.' : '잠시 후 다시 시도해주세요.'));
+    }
+  };
+
+  // OTP 확인
+  window.verifyOTP = async function(type) {
+    const otp = document.getElementById('otpInp')?.value;
+    if (!otp || !window._confirmResult) { alert('인증번호를 입력해주세요.'); return; }
+    try {
+      const result = await window._confirmResult.confirm(otp);
+      const user = result.user;
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      if (snap.exists()) {
+        window._userProfile = snap.data();
+        showSc('home'); setNav('home');
+        alert('로그인 완료! 🍊');
+      } else {
+        window._newUid = user.uid;
+        const setup = document.getElementById('profileSetup');
+        if (setup) setup.style.display = 'block';
+      }
+    } catch(e) { alert('인증번호가 맞지 않습니다.'); }
+  };
+
+  // 회원가입 완료
+  window.completeSignup = async function() {
+    const inputs = document.querySelectorAll('#profileSetup input[type="text"]');
+    const nickname = inputs[1]?.value?.trim() || inputs[0]?.value?.trim() || '이웃';
+    const realName = inputs[0]?.value?.trim() || '';
+    if (!nickname) { alert('닉네임을 입력해주세요.'); return; }
+    const uid = window._newUid || auth.currentUser?.uid;
+    if (!uid) return;
+    const profile = { uid, nickname, realName, phone: auth.currentUser?.phoneNumber||'',
+      verified:false, vibeScore:0, totalTrades:0, createdAt:serverTimestamp() };
+    await setDoc(doc(db,'users',uid), profile);
+    window._userProfile = profile;
+    showSc('home'); setNav('home');
+    setTimeout(() => openModal(), 800);
+    alert('가입 완료! 🍊 동네 인증을 해주세요.');
+  };
+
+  // 로그아웃
+  window.logoutUser = async function() {
+    if (!confirm('로그아웃 하시겠어요?')) return;
+    await signOut(auth);
+    window._currentUser = null; window._userProfile = null;
+    showSc('home'); setNav('home');
+    alert('로그아웃됐습니다.');
+  };
+
+  // 매물 등록
+  window.submitListing = async function() {
+    if (!window._currentUser) { alert('로그인이 필요합니다.'); showSc('auth'); return; }
+    if (!window._userProfile?.verified) { alert('동네 인증 후 등록 가능합니다.'); openModal(); return; }
+    const title = document.getElementById('listingTitle')?.value?.trim();
+    const price = document.getElementById('listingPrice')?.value;
+    const desc = document.getElementById('listingDesc')?.value?.trim();
+    const cat = document.querySelector('#sc-write .catc.on')?.textContent?.trim() || '기타';
+    if (!title) { alert('제목을 입력해주세요.'); return; }
+    try {
+      await addDoc(collection(db,'listings'), {
+        userId:window._currentUser.uid, sellerNickname:window._userProfile.nickname,
+        title, price:price?Number(price):0, isFree:!price,
+        description:desc||'', category:cat,
+        neighborhood:window._userProfile.neighborhood||'Irvine',
+        status:'active', isBoost:false, viewCount:0, likeCount:0, images:[],
+        createdAt:serverTimestamp(),
+      });
+      alert('매물 등록 완료! 🍊');
+      showSc('home'); setNav('home');
+      loadListings();
+    } catch(e) { alert('등록 실패: ' + e.message); }
+  };
+
+  // 매물 불러오기
+  window.loadListings = async function() {
+    try {
+      const q = query(collection(db,'listings'), where('status','==','active'),
+        orderBy('createdAt','desc'), limit(30));
+      const snap = await getDocs(q);
+      const list = snap.docs.map(d=>({id:d.id,...d.data()}));
+      if (!list.length) return;
+      const feed = document.querySelector('#p-market .sscroll');
+      if (!feed) return;
+      feed.querySelectorAll('.rc').forEach(c=>c.remove());
+      list.forEach(l => {
+        const el = document.createElement('div');
+        el.className = 'card rc';
+        el.style.cssText='display:flex;gap:12px;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);cursor:pointer';
+        el.innerHTML='<div style="width:90px;height:90px;border-radius:10px;background:var(--ivory);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:28px">📦</div>'
+          +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:#3E2510;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+l.title+'</div>'
+          +'<div style="font-size:12px;color:var(--muted);margin-bottom:4px">'+(l.neighborhood||'OC')+' · 방금</div>'
+          +'<div style="font-size:15px;font-weight:700;color:#3E2510">'+(l.isFree?'무료 나눔':'$'+(l.price||0).toLocaleString())+'</div></div>';
+        el.onclick=()=>{ window._selectedListing=l; showSc('detail'); };
+        feed.insertBefore(el, feed.firstChild);
+      });
+    } catch(e) { console.log('매물로드:', e.message); }
+  };
+
+  // 채팅 시작
+  window.startChat = async function() {
+    const l = window._selectedListing;
+    if (!l) return;
+    if (!window._currentUser) { alert('로그인이 필요합니다.'); showSc('auth'); return; }
+    if (l.userId === window._currentUser.uid) { alert('내 매물입니다.'); return; }
+    const chatId = [window._currentUser.uid, l.userId, l.id].sort().join('_');
+    const snap = await getDoc(doc(db,'chats',chatId));
+    if (!snap.exists()) {
+      await setDoc(doc(db,'chats',chatId), {
+        listingId:l.id, listingTitle:l.title, listingPrice:l.price||0,
+        buyerId:window._currentUser.uid, sellerId:l.userId,
+        status:'active', lastMessage:'', createdAt:serverTimestamp(),
+      });
+    }
+    window._activeChatId = chatId;
+    showSc('chat');
+    // 메시지 구독
+    if (window._msgUnsub) window._msgUnsub();
+    const msgList = document.getElementById('msgList');
+    window._msgUnsub = onSnapshot(
+      query(collection(db,'chats',chatId,'messages'), orderBy('createdAt','asc')),
+      snap => {
+        snap.docChanges().forEach(ch => {
+          if (ch.type!=='added') return;
+          const msg=ch.doc.data();
+          if (document.getElementById('m-'+ch.doc.id)) return;
+          const isMe=msg.senderId===window._currentUser?.uid;
+          const el=document.createElement('div');
+          el.id='m-'+ch.doc.id; el.className='msg '+(isMe?'me':'them');
+          el.innerHTML='<div><div class="bbl" style="'+(isMe?'background:var(--or);color:#fff':'')+'">'+msg.text+'</div></div><div class="mt">방금</div>';
+          if(msgList){msgList.appendChild(el); msgList.scrollTop=msgList.scrollHeight;}
+        });
+      }
+    );
+  };
+
+  // 메시지 전송
+  window.sendMsg = async function() {
+    const inp=document.getElementById('msgInp');
+    if(!inp?.value.trim()||!window._activeChatId||!window._currentUser) return;
+    const text=inp.value.trim(); inp.value='';
+    await addDoc(collection(db,'chats',window._activeChatId,'messages'),
+      {senderId:window._currentUser.uid, text, createdAt:serverTimestamp()});
+    await updateDoc(doc(db,'chats',window._activeChatId),
+      {lastMessage:text, lastMessageAt:serverTimestamp()});
+  };
+
+  // GPS 동네 인증
+  window.verifyWithGPS = async function() {
+    if (!window._currentUser) { alert('로그인이 필요합니다.'); showSc('auth'); closeModal(); return; }
+    if (!navigator.geolocation) { alert('GPS를 지원하지 않습니다.'); return; }
+    navigator.geolocation.getCurrentPosition(async pos => {
+      try {
+        await updateDoc(doc(db,'users',window._currentUser.uid), {
+          lat:pos.coords.latitude, lng:pos.coords.longitude,
+          neighborhood:'Irvine', verified:true, verifiedAt:serverTimestamp(),
+        });
+        if(window._userProfile) window._userProfile.verified=true;
+        alert('동네 인증 완료! 🍊\n이제 매물을 등록할 수 있어요.');
+        closeModal();
+      } catch(e) { alert('저장 실패: '+e.message); }
+    }, ()=>{ alert('위치 접근이 거부됐습니다.\n설정에서 위치를 허용해주세요.'); });
+  };
+
+  // 소셜 로그인 (Google)
+  window.socialLogin = async function(provider) {
+    alert('소셜 로그인은 추후 지원 예정입니다.\n전화번호로 가입해주세요.');
+  };
+
+  window.addEventListener('load', () => setTimeout(loadListings, 500));
+
+  // reCAPTCHA
+  const rc=document.createElement('div'); rc.id='rc-div'; document.body.appendChild(rc);
+
+</script>
 </head>
 <body>
 <div class="shell" id="app">
@@ -1017,11 +1259,11 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="showSc('detail')"><div class="cth th-plnt"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#5B8A3C;stroke-width:1.5;stroke-linecap:round"><path d="M12 22V12"/><path d="M12 12C12 12 7 10 7 6a5 5 0 0 1 10 0c0 4-5 6-5 6z"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(91,138,60,.1);color:#3A6B20;">식물 Plants</div><div class="ctitle">몬스테라 화분 (대형)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>라구나힐스 &#183; 2시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
     <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="showSc('detail')"><div class="cth th-baby"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#B0405A;stroke-width:1.5;stroke-linecap:round"><path d="M9 12H5a2 2 0 0 0-2 2v6h18v-6a2 2 0 0 0-2-2h-4"/><circle cx="12" cy="6" r="4"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(176,64,90,.1);color:#8B2040;">유아동/장난감 Baby &amp; Kids</div><div class="ctitle">아기 옷 묶음 (0&#8211;6개월)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 &#183; 4시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
     
-    <!-- COMMUNITY FUNDING -->
+    <div style="display:none"><!-- COMMUNITY FUNDING -->
     <div style="padding:14px 16px 6px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
-        <span style="font-size:14px;font-weight:700;color:var(--ink)">커뮤니티 펀딩 Community Funding</span>
-        <button onclick="showSc('home')" style="font-size:12px;font-weight:600;color:var(--or);background:none;border:none;cursor:pointer;font-family:inherit;padding:0">+ 새 펀딩</button>
+        <span style="font-size:14px;font-weight:700;color:var(--ink)"><span style="display:none">커뮤니티 펀딩 Community Funding</span><span style="display:none"></span>
+        <button style="display:none">+ 새 펀딩</button>
       </div>
       <div style="font-size:12px;color:var(--muted)">함께 만드는 우리 동네</div>
     </div>
@@ -1078,6 +1320,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         <span style="font-size:12px;color:var(--muted);flex:1">실행팀 5명 · 87명 참여</span>
         <button onclick="event.stopPropagation();showSc('funding')" style="padding:7px 14px;background:#3A7D52;border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">진행현황 보기</button>
       </div>
+    </div>
     </div>
     <div class="pb80"></div>
   </div>
@@ -1274,10 +1517,10 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 </div>
 
 <!-- ══ 펀딩 상세 ══ -->
-<div class="sc" id="sc-funding">
+<div class="sc" id="sc-funding" style="display:none">
   <div class="dhead">
     <button class="bk" onclick="showSc('home')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
-    <div class="dhead-t">커뮤니티 펀딩 Community Funding</div>
+    <div class="dhead-t"><span style="display:none">커뮤니티 펀딩 Community Funding</span><span style="display:none"></div>
   </div>
   <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;background:var(--cream)">
     <div style="background:linear-gradient(160deg,#FDF0E8,#F5E0CC);padding:28px 20px 24px;text-align:center;position:relative">
