@@ -720,22 +720,44 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
   // OTP 확인
   window.verifyOTP = async function(type) {
-    const otp = document.getElementById('otpInp')?.value;
-    if (!otp || !window._confirmResult) { alert('인증번호를 입력해주세요.'); return; }
+    const otp = document.getElementById('otpInp')?.value?.trim();
+    if (!otp) { alert('인증번호를 입력해주세요.'); return; }
+    if (!window._confirmResult) { alert('먼저 SMS 인증번호를 받아주세요.'); return; }
     try {
       const result = await window._confirmResult.confirm(otp);
       const user = result.user;
-      const snap = await getDoc(doc(db, 'users', user.uid));
-      if (snap.exists()) {
-        window._userProfile = snap.data();
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) {
+          // 기존 유저 로그인
+          window._userProfile = snap.data();
+          showSc('home'); setNav('home');
+          alert('로그인 완료! 🍊');
+        } else {
+          // 신규 유저 → 프로필 설정
+          window._newUid = user.uid;
+          const setup = document.getElementById('profileSetup');
+          if (setup) {
+            setup.style.display = 'block';
+            setup.scrollIntoView({behavior:'smooth'});
+          }
+        }
+      } catch(dbErr) {
+        // DB 오류여도 일단 홈으로
+        console.error('DB 오류:', dbErr);
         showSc('home'); setNav('home');
-        alert('로그인 완료! 🍊');
-      } else {
-        window._newUid = user.uid;
-        const setup = document.getElementById('profileSetup');
-        if (setup) setup.style.display = 'block';
+        alert('로그인됐습니다! 🍊');
       }
-    } catch(e) { alert('인증번호가 맞지 않습니다.'); }
+    } catch(e) {
+      console.error('OTP 오류:', e.code, e.message);
+      if (e.code === 'auth/invalid-verification-code') {
+        alert('인증번호가 맞지 않습니다. 다시 확인해주세요.');
+      } else if (e.code === 'auth/code-expired') {
+        alert('인증번호가 만료됐습니다. 재발송해주세요.');
+      } else {
+        alert('오류: ' + e.message);
+      }
+    }
   };
 
   // 회원가입 완료
