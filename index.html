@@ -678,19 +678,43 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     const phone = '+1' + inp.value.replace(/\D/g,'');
     if (phone.length < 12) { alert('전화번호를 정확히 입력해주세요.'); return; }
     try {
-      if (!window._recaptcha) {
-        window._recaptcha = new RecaptchaVerifier(auth, 'rc-div', {size:'invisible'});
+      // 기존 recaptcha 초기화
+      if (window._recaptcha) {
+        try { window._recaptcha.clear(); } catch(e) {}
+        window._recaptcha = null;
       }
+      // rc-div 초기화
+      const rcDiv = document.getElementById('rc-div');
+      if (rcDiv) rcDiv.innerHTML = '';
+
+      window._recaptcha = new RecaptchaVerifier(auth, 'rc-div', {
+        size: 'invisible',
+        callback: () => {},
+        'expired-callback': () => { window._recaptcha = null; }
+      });
+      await window._recaptcha.render();
       window._confirmResult = await signInWithPhoneNumber(auth, phone, window._recaptcha);
       const wrap = document.getElementById(type==='login' ? 'loginOtpWrap' : 'signupOtpWrap');
       if (wrap) wrap.style.display = 'block';
       // 타이머
       let s=180; const el=document.getElementById('loginTimer');
       const t=setInterval(()=>{ s--; if(el) el.textContent=Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60; if(s<=0) clearInterval(t); },1000);
-      alert('인증번호 발송됐습니다!');
+      alert('인증번호가 발송됐습니다! 📱');
     } catch(e) {
-      window._recaptcha = null;
-      alert('발송 실패: ' + (e.code === 'auth/invalid-phone-number' ? '전화번호를 확인해주세요.' : '잠시 후 다시 시도해주세요.'));
+      console.error('SMS 에러:', e.code, e.message);
+      if (window._recaptcha) {
+        try { window._recaptcha.clear(); } catch(err) {}
+        window._recaptcha = null;
+      }
+      if (e.code === 'auth/invalid-phone-number') {
+        alert('전화번호를 확인해주세요.');
+      } else if (e.code === 'auth/too-many-requests') {
+        alert('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.');
+      } else if (e.code === 'auth/quota-exceeded') {
+        alert('SMS 한도 초과. 내일 다시 시도해주세요.');
+      } else {
+        alert('발송 실패: ' + e.message);
+      }
     }
   };
 
