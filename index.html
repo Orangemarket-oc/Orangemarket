@@ -878,15 +878,29 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   // 📦 매물
   // ════════════════════════════════════════════════════════
   window.submitListing = async function() {
-    if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); return; }
-    if (!window._userProfile?.verified) { alert('동네 인증 후 등록 가능해요.'); openModal(); return; }
+    // 로그인 체크
+    if (!window._currentUser) {
+      alert('로그인이 필요해요.\n프로필 탭에서 로그인해주세요.');
+      showSc('auth'); return;
+    }
+    // 동네 인증 체크
+    if (!window._userProfile?.verified) {
+      alert('동네 인증 후 등록 가능해요.\n프로필 탭에서 GPS 인증을 해주세요.');
+      openModal(); return;
+    }
+    // 제목 읽기
     const titleEl = document.getElementById('listingTitle');
-    const title = (titleEl?.value || titleEl?.innerText || '').trim();
-    console.log('제목 확인:', title, titleEl);
-    const price = document.getElementById('listingPrice')?.value;
-    const desc  = document.getElementById('listingDesc')?.value?.trim();
+    const priceEl = document.getElementById('listingPrice');
+    const descEl  = document.getElementById('listingDesc');
+    const title = (titleEl?.value || '').trim();
+    const price = (priceEl?.value || '').trim();
+    const desc  = (descEl?.value  || '').trim();
     const cat   = document.querySelector('#sc-write .catc.on')?.textContent?.trim() || '기타';
-    if (!title) { alert('제목을 입력해주세요.'); return; }
+    if (!title) {
+      alert('제목을 입력해주세요.');
+      titleEl?.focus();
+      return;
+    }
 
     // 사진 (base64 최대 3장)
     const photos = window._pendingPhotos || [];
@@ -978,16 +992,21 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     } catch(e) { console.log('매물 로드:', e.message); }
   };
 
+  // 매물 저장소
+  window._listingStore = {};
+
   function _renderListings(list) {
     const feed = document.querySelector('#p-market .sscroll');
     if (!feed || list.length===0) return;
     feed.querySelectorAll('.rc').forEach(c=>c.remove());
     list.forEach(l => {
+      window._listingStore[l.id] = l;
       const el = document.createElement('div');
       el.className='card rc';
+      el.dataset.lid = l.id;
       el.style.cssText='display:flex;gap:12px;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);cursor:pointer';
       const thumb = l.images?.[0]
-        ? `<img src="${l.images[0]}" style="width:90px;height:90px;border-radius:10px;object-fit:cover;flex-shrink:0">`
+        ? `<img src="${l.images[0]}" style="width:90px;height:90px;border-radius:10px;object-fit:cover;flex-shrink:0" loading="lazy">`
         : `<div style="width:90px;height:90px;border-radius:10px;background:var(--ivory);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:28px">📦</div>`;
       el.innerHTML = thumb
         + `<div style="flex:1;min-width:0">
@@ -995,7 +1014,12 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
             <div style="font-size:12px;color:var(--muted);margin-bottom:4px">${l.neighborhood||'OC'} · 방금</div>
             <div style="font-size:15px;font-weight:700;color:#3E2510">${l.isFree?'무료 나눔':'$'+(l.price||0).toLocaleString()}</div>
            </div>`;
-      el.onclick = () => { window._selectedListing=l; showSc('detail'); _loadDetail(l); };
+      el.addEventListener('click', () => {
+        const listing = window._listingStore[l.id];
+        window._selectedListing = listing;
+        _loadDetail(listing);
+        showSc('detail');
+      });
       feed.insertBefore(el, feed.firstChild);
     });
   }
@@ -1061,8 +1085,10 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         // 상태 배지 색상
         const statusColor = l.status==='active' ? 'var(--green)' : l.status==='reserved' ? 'var(--or)' : 'var(--muted)';
         const statusText  = l.status==='active' ? '판매중' : l.status==='reserved' ? '예약중' : '판매완료';
+        window._listingStore = window._listingStore || {};
+        window._listingStore[l.id] = l;
         el.innerHTML=`
-          <div style="flex:1;min-width:0;cursor:pointer" onclick="window._selectedListing=${JSON.stringify(l).replace(/`/g,'').replace(/"/g,"'")};_loadDetail(window._selectedListing);showSc('detail')">
+          <div style="flex:1;min-width:0;cursor:pointer" data-lid="${l.id}" onclick="var _l=window._listingStore[this.dataset.lid];if(_l){window._selectedListing=_l;_loadDetail(_l);showSc('detail');}">
             <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.title}</div>
             <div style="display:flex;align-items:center;gap:6px">
               <span style="font-size:12px;color:var(--muted)">${l.isFree?'무료':'$'+(l.price||0).toLocaleString()}</span>
@@ -1070,7 +1096,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
             </div>
           </div>
           <div style="display:flex;gap:5px;flex-shrink:0">
-            <button onclick="editListing(${JSON.stringify(l).replace(/`/g,'').replace(/"/g,"'")})" style="padding:6px 10px;border:1.5px solid var(--or-bd);border-radius:6px;background:var(--or-bg);color:var(--or);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">수정</button>
+            <button data-lid="${l.id}" onclick="var _l=window._listingStore&&window._listingStore[this.dataset.lid];if(_l)editListing(_l);" style="padding:6px 10px;border:1.5px solid var(--or-bd);border-radius:6px;background:var(--or-bg);color:var(--or);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">수정</button>
             <button onclick="markSold('${l.id}')" style="padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--ivory);color:#3E2510;font-size:11px;cursor:pointer;font-family:inherit">${l.status==='sold'?'재등록':'완료'}</button>
             <button onclick="deleteListing('${l.id}')" style="padding:6px 10px;border:1px solid #F5C6C2;border-radius:6px;background:#FDF0EE;color:#C0392B;font-size:11px;cursor:pointer;font-family:inherit">삭제</button>
           </div>`;
@@ -1102,7 +1128,11 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   // ════════════════════════════════════════════════════════
   window.startChat = async function() {
     const l = window._selectedListing;
-    if (!l) { alert('매물 정보를 불러오는 중이에요. 잠시 후 다시 눌러주세요.'); return; }
+    if (!l) {
+      alert('매물을 먼저 선택해주세요.\n홈에서 매물을 클릭하면 채팅할 수 있어요.');
+      showSc('home'); setNav('home');
+      return;
+    }
     if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); return; }
     if (l.userId===window._currentUser.uid) { alert('내 매물이에요.'); return; }
     const chatId = [window._currentUser.uid, l.userId, l.id].sort().join('_');
@@ -1353,7 +1383,9 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
             const el=document.createElement('div');
             el.style.cssText='display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);background:#fff;cursor:pointer';
             el.innerHTML=`<div style="flex:1"><div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:3px">${l.title}</div><div style="font-size:13px;color:var(--or);font-weight:700">${l.isFree?'무료 나눔':'$'+(l.price||0).toLocaleString()}</div></div>`;
-            el.onclick=()=>{ window._selectedListing=l; showSc('detail'); };
+            window._listingStore = window._listingStore || {};
+            window._listingStore[l.id] = l;
+            el.addEventListener('click', ()=>{ window._selectedListing=l; _loadDetail(l); showSc('detail'); });
             listContainer.appendChild(el);
           });
         }
@@ -1432,7 +1464,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       const snaps = await Promise.all(promises);
       const items = snaps.filter(s=>s.exists()).map(s=>({id:s.id,...s.data()}));
       const html = items.map(l=>`
-        <div onclick="window._selectedListing=${JSON.stringify(l).replace(/"/g,"'")};showSc('detail');_loadDetail(${JSON.stringify(l).replace(/"/g,"'")})"
+        <div onclick="openDemoDetail()"/g,"'")})"
           style="display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);background:#fff;cursor:pointer">
           <div style="flex:1">
             <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:2px">${l.title}</div>
@@ -1717,7 +1749,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
 
     <!-- CARD: boosted -->
-    <div class="card" onclick="showSc('detail')">
+    <div class="card" onclick="window._selectedListing={id:"demo_"+Math.random().toString(36).slice(2),title:"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')">
       <div class="cth th-elec"><svg viewBox="0 0 24 24" style="width:30px;height:30px;fill:none;stroke:#4A90D9;stroke-width:1.5;stroke-linecap:round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
       <div class="cbody">
         <div>
@@ -1734,7 +1766,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       <div class="boost-tag"><svg viewBox="0 0 24 24"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>Boost</div>
     </div>
 
-    <div class="card" onclick="showSc('detail')">
+    <div class="card" onclick="window._selectedListing={id:"demo_"+Math.random().toString(36).slice(2),title:"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')">
       <div class="cth th-furn"><svg viewBox="0 0 24 24" style="width:30px;height:30px;fill:none;stroke:#8B7355;stroke-width:1.5;stroke-linecap:round"><path d="M20 9V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2"/><path d="M2 11v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v2H6v-2a2 2 0 0 0-4 0z"/></svg></div>
       <div class="cbody">
         <div>
@@ -1769,7 +1801,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       </div>
     </div>
 
-    <div class="card" onclick="showSc('detail')">
+    <div class="card" onclick="window._selectedListing={id:"demo_"+Math.random().toString(36).slice(2),title:"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')">
       <div class="cth th-plnt"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#5B8A3C;stroke-width:1.5;stroke-linecap:round"><path d="M12 22V12"/><path d="M12 12C12 12 7 10 7 6a5 5 0 0 1 10 0c0 4-5 6-5 6z"/></svg></div>
       <div class="cbody">
         <div>
@@ -2023,8 +2055,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   <div class="panel" id="p-donate">
     <div class="bnrwrap"><div class="md-bnr"><div class="md-ic"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><div><div class="md-sp">Community</div><div class="md-ttl">이웃과 함께 나눠요</div><div class="md-sub">무료 나눔 &#183; Free Donations</div></div></div></div>
     <div class="sech"><div class="secht">나눔 Donations<small>· Free &amp; Funding</small></div><div class="secha">+ 나눔 등록</div></div>
-    <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="showSc('detail')"><div class="cth th-plnt"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#5B8A3C;stroke-width:1.5;stroke-linecap:round"><path d="M12 22V12"/><path d="M12 12C12 12 7 10 7 6a5 5 0 0 1 10 0c0 4-5 6-5 6z"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(91,138,60,.1);color:#3A6B20;">식물 Plants</div><div class="ctitle">몬스테라 화분 (대형)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>라구나힐스 &#183; 2시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
-    <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="showSc('detail')"><div class="cth th-baby"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#B0405A;stroke-width:1.5;stroke-linecap:round"><path d="M9 12H5a2 2 0 0 0-2 2v6h18v-6a2 2 0 0 0-2-2h-4"/><circle cx="12" cy="6" r="4"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(176,64,90,.1);color:#8B2040;">유아동/장난감 Baby &amp; Kids</div><div class="ctitle">아기 옷 묶음 (0&#8211;6개월)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 &#183; 4시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
+    <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="window._selectedListing={id:"demo_"+Math.random().toString(36).slice(2),title:"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')"><div class="cth th-plnt"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#5B8A3C;stroke-width:1.5;stroke-linecap:round"><path d="M12 22V12"/><path d="M12 12C12 12 7 10 7 6a5 5 0 0 1 10 0c0 4-5 6-5 6z"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(91,138,60,.1);color:#3A6B20;">식물 Plants</div><div class="ctitle">몬스테라 화분 (대형)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>라구나힐스 &#183; 2시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
+    <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="window._selectedListing={id:"demo_"+Math.random().toString(36).slice(2),title:"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')"><div class="cth th-baby"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#B0405A;stroke-width:1.5;stroke-linecap:round"><path d="M9 12H5a2 2 0 0 0-2 2v6h18v-6a2 2 0 0 0-2-2h-4"/><circle cx="12" cy="6" r="4"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(176,64,90,.1);color:#8B2040;">유아동/장난감 Baby &amp; Kids</div><div class="ctitle">아기 옷 묶음 (0&#8211;6개월)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 &#183; 4시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
     
     <div style="display:none"><!-- COMMUNITY FUNDING -->
     <div style="padding:14px 16px 6px">
@@ -2568,7 +2600,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   </div>
 <div class="sscroll">
     <div class="sech"><div class="secht">검색 결과<small>&#183; 12건</small></div></div>
-    <div class="card" onclick="showSc('detail')">
+    <div class="card" onclick="window._selectedListing={id:"demo_"+Math.random().toString(36).slice(2),title:"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')">
       <div class="cth th-elec"><svg viewBox="0 0 24 24" style="width:30px;height:30px;fill:none;stroke:#4A90D9;stroke-width:1.5;stroke-linecap:round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
       <div class="cbody">
         <div><div class="cbadge" style="background:rgba(74,144,217,.1);color:#2563A8;">가전/전자 Electronics</div>
@@ -2793,11 +2825,11 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   <div class="wscroll">
     <div class="wsec">사진 Photos (최대 10장)</div>
     <div class="pgrid" id="pgrid">
-      <div class="phbox" onclick="document.getElementById('photoFile').click()">
+      <label class="phbox" for="photoFile" style="cursor:pointer">
         <input type="file" id="photoFile" accept="image/*" style="display:none" onchange="addPhotoFirebase(this)">
         <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         <span>추가</span>
-      </div>
+      </label>
       <div id="photoPreview" style="display:contents"></div>
     </div>
     <div class="phctr" id="phCtr">0 / 10장</div>
@@ -2819,9 +2851,9 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
     <div class="wsep"></div>
     <div class="wsec">제목 Title</div>
-    <input id="listingTitle" class="winp" placeholder="어떤 물건을 판매하시나요? What are you selling?"/>
+    <input id="listingTitle" class="winp" style="width:100%" placeholder="어떤 물건을 판매하시나요? What are you selling?"/>
     <div class="wsec">가격 Price</div>
-    <div class="wrow"><input id="listingPrice" class="winp" placeholder="$ 금액 Amount" type="number"/><input class="winp" id="freeT" placeholder="무료 나눔?" readonly style="cursor:pointer;color:var(--green);font-weight:500;flex:.65" onclick="this.value=this.value?'':' 무료 Free'"/></div>
+    <div class="wrow"><input id="listingPrice" class="winp" style="width:100%" placeholder="$ 금액 Amount" type="number"/><input class="winp" id="freeT" placeholder="무료 나눔?" readonly style="cursor:pointer;color:var(--green);font-weight:500;flex:.65" onclick="this.value=this.value?'':' 무료 Free'"/></div>
     <div class="wsec">상세 설명 Description</div>
     <textarea id="listingDesc" class="wta" placeholder="상품 상태, 구매 시기, 직거래 희망 장소 등&#10;Condition, purchase date, meet-up location..."></textarea>
     <div class="wsec">거래 지역 Location</div>
@@ -2921,9 +2953,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     <div style="margin-bottom:16px">
       <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">사진 수정 Photos</div>
       <div id="editPhotoPreview" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
-      <button onclick="document.getElementById('editPhotoFile').click()" style="padding:8px 14px;border:1.5px dashed var(--line);border-radius:8px;background:var(--ivory);color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit">
-        + 사진 추가
-      </button>
+      <label for="editPhotoFile" style="display:inline-block;padding:8px 14px;border:1.5px dashed var(--line);border-radius:8px;background:var(--ivory);color:var(--muted);font-size:12px;cursor:pointer">+ 사진 추가</label>
       <input type="file" id="editPhotoFile" accept="image/*" style="display:none" onchange="addEditPhoto(this)">
     </div>
 
@@ -3191,6 +3221,11 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 </div>
 </div>
 <script>
+function openDemoDetail() {
+  // 데모 매물 클릭 - Firebase에서 실제 매물을 불러옵니다
+  showSc('detail');
+}
+
 var HIDENAV=['sc-detail','sc-chat','sc-write','sc-sponsor','sc-review','sc-search','sc-notif','sc-job-write','sc-lesson-write','sc-biz-write','sc-funding','sc-auth'];
 var boostOpen=false,boostCnt=0,boostMax=5,curPrice=1200;
 var orgScores=[0,0,0,0,0];
