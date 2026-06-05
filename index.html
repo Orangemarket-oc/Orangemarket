@@ -642,6 +642,10 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   const auth = getAuth(app);
   const db   = getFirestore(app);
 
+  // 전역 노출 (main script에서 접근)
+  window._auth = auth;
+  window._db   = db;
+
   // ── OC 우편번호 → 동네 이름 매핑 ────────────────────────
   const ZIP_NEIGHBORHOODS = {
     '92602':'얼바인 올드타운','92603':'얼바인 터틀록',
@@ -1159,12 +1163,14 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     // 기존 메시지 초기화
     const msgList = document.getElementById('msgList');
     if (msgList) {
-      const demos = msgList.querySelectorAll('.msg');
-      demos.forEach(m => { if (!m.id.startsWith('m-')) m.style.display='none'; });
+      // demo 메시지 숨김, Firebase 메시지만 표시
+      msgList.querySelectorAll('.msg').forEach(m => {
+        if (!m.id || !m.id.startsWith('m-')) m.style.display = 'none';
+      });
     }
 
     showSc('chat');
-    window._loadMessages(chatId);
+    setTimeout(() => window._loadMessages(chatId), 100);
   };
 
   window._loadMessages = function(chatId) {
@@ -1190,7 +1196,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     );
   };
 
-  window.sendMsg = async function() {
+  window.sendMsg = window._fbSendMsg = async function() {
     const inp = document.getElementById('msgInp');
     if (!inp?.value.trim()||!window._activeChatId||!window._currentUser) return;
     const text=inp.value.trim(); inp.value='';
@@ -3286,7 +3292,7 @@ function doBoost(){
   }
   curPrice=newP;
   document.getElementById('dPrice').textContent='$'+newP.toLocaleString();
-  document.getElementById('chatPrice').textContent='$'+newP.toLocaleString();
+  var _cp=document.getElementById('chatPrice'); if(_cp) _cp.textContent='$'+newP.toLocaleString();
   document.getElementById('boostEd').style.display='none';
   boostOpen=false;
   var btn=document.getElementById('boostBtn');
@@ -3296,6 +3302,8 @@ function doBoost(){
 
 /* CHAT */
 function sendMsg(){
+  // Firebase 버전이 로드됐으면 그것 사용
+  if(window._fbSendMsg){ window._fbSendMsg(); return; }
   var inp=document.getElementById('msgInp');
   var txt=inp.value.trim();if(!txt)return;
   var list=document.getElementById('msgList');
@@ -3522,10 +3530,13 @@ function completeSignup(){
 }
 function goProfile(){showSc('profile');setNav('profile');}
 function checkAndGoProfile(){
-  if(window._currentUser){
-    showSc('profile');setNav('profile');
+  var u = window._currentUser
+       || (window._auth && window._auth.currentUser);
+  if(u){
+    window._currentUser = u;
+    showSc('profile'); setNav('profile');
   } else {
-    showSc('auth');setNav('profile');
+    showSc('auth'); setNav('profile');
   }
 }
 window.checkAndGoProfile = checkAndGoProfile;
