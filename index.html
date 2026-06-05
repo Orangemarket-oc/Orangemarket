@@ -880,7 +880,9 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   window.submitListing = async function() {
     if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); return; }
     if (!window._userProfile?.verified) { alert('동네 인증 후 등록 가능해요.'); openModal(); return; }
-    const title = document.getElementById('listingTitle')?.value?.trim();
+    const titleEl = document.getElementById('listingTitle');
+    const title = (titleEl?.value || titleEl?.innerText || '').trim();
+    console.log('제목 확인:', title, titleEl);
     const price = document.getElementById('listingPrice')?.value;
     const desc  = document.getElementById('listingDesc')?.value?.trim();
     const cat   = document.querySelector('#sc-write .catc.on')?.textContent?.trim() || '기타';
@@ -999,14 +1001,41 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   }
 
   function _loadDetail(l) {
+    // 제목
     const t = document.getElementById('detailTitle');
-    const p = document.getElementById('detailPrice');
+    if (t) t.textContent = l.title || '';
+
+    // 가격
+    const p = document.getElementById('dPrice');
+    if (p) p.textContent = l.isFree ? '무료 나눔' : ('$'+(l.price||0).toLocaleString());
+
+    // 설명
     const d = document.getElementById('detailDesc');
-    const n = document.getElementById('detailNeighborhood');
-    if (t) t.textContent = l.title;
-    if (p) p.textContent = l.isFree ? '무료 나눔' : '$'+l.price?.toLocaleString();
-    if (d) d.textContent = l.description || '';
-    if (n) n.textContent = l.neighborhood || '';
+    if (d) d.textContent = l.description || '설명이 없어요.';
+
+    // 판매자
+    const snm = document.getElementById('detailSellerNm');
+    if (snm) snm.textContent = l.sellerNickname || '판매자';
+
+    const sinf = document.getElementById('detailSellerInfo');
+    if (sinf) sinf.textContent = (l.neighborhood||'OC') + ' · 판매자';
+
+    // 사진 표시
+    const phArea = document.querySelector('#sc-detail .ph-area');
+    if (phArea && l.images && l.images.length > 0) {
+      const existing = phArea.querySelector('.ph-img-real');
+      if (!existing) {
+        const img = document.createElement('img');
+        img.src = l.images[0];
+        img.className = 'ph-img-real';
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;border-radius:inherit';
+        phArea.style.position = 'relative';
+        phArea.appendChild(img);
+      } else {
+        existing.src = l.images[0];
+      }
+    }
+
     // 조회수 증가
     updateDoc(doc(db,'listings',l.id), {viewCount:increment(1)}).catch(()=>{});
   }
@@ -1083,6 +1112,20 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       });
     }
     window._activeChatId = chatId;
+
+    // 채팅 헤더 업데이트
+    const cpn = document.querySelector('#sc-chat .cpn');
+    const cpt = document.querySelector('#sc-chat .cpt');
+    if (cpn) cpn.textContent = l.sellerNickname || '판매자';
+    if (cpt) cpt.textContent = l.title || '';
+
+    // 기존 메시지 초기화
+    const msgList = document.getElementById('msgList');
+    if (msgList) {
+      const demos = msgList.querySelectorAll('.msg');
+      demos.forEach(m => { if (!m.id.startsWith('m-')) m.style.display='none'; });
+    }
+
     showSc('chat');
     window._loadMessages(chatId);
   };
@@ -2326,7 +2369,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   <div class="dscroll">
     <div class="seller-row">
       <div class="sav">J</div>
-      <div><div class="snm">Jason K.</div><div class="sinf">얼바인 &#183; 거래 28회</div></div>
+      <div><div class="snm" id="detailSellerNm" onclick="if(window._selectedListing)viewUserProfile(window._selectedListing.userId)" style="cursor:pointer">Jason K.</div><div class="sinf" id="detailSellerInfo">얼바인 · 거래 28회</div></div>
       <div class="srt"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>4.9</div>
     </div>
     <div class="dblock">
@@ -2334,9 +2377,9 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         <div class="dprice" id="dPrice">$1,200</div>
         <div class="dprev" id="dPrev"></div>
       </div>
-      <div class="dtitle">MacBook Pro 14&#34; M3 2023</div>
+      <div class="dtitle" id="detailTitle">MacBook Pro 14" M3 2023</div>
       <div class="dcat">가전/전자 Electronics &#183; 컴퓨터</div>
-      <div class="ddesc">M3 칩, 16GB RAM, 512GB SSD. 구매 6개월. 케이스 씌워 사용 — 흠집 없음. 배터리 98%. 박스/충전기 포함. 직거래 희망 (얼바인 스펙트럼 근처).</div>
+      <div class="ddesc" id="detailDesc">M3 칩, 16GB RAM, 512GB SSD. 구매 6개월. 케이스 씌워 사용 — 흠집 없음. 배터리 98%. 박스/충전기 포함. 직거래 희망 (얼바인 스펙트럼 근처).</div>
       <div class="dstats">
         <div class="dstat"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>142</div>
         <div class="dstat"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>24</div>
@@ -2388,7 +2431,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     <button class="fav-btn" id="favBtn" onclick="this.classList.toggle('on')">
       <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
     </button>
-    <button class="cta-btn" onclick="showSc('chatlist');loadChatList()">채팅으로 문의하기</button>
+    <button class="cta-btn" onclick="startChat()">채팅으로 문의하기</button>
   </div>
 </div>
 
@@ -2454,7 +2497,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
     <div style="background:var(--w);padding:13px 16px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
       <div class="sav">J</div>
-      <div><div class="snm">Jason K.</div><div class="sinf">얼바인 &#183; 28회 거래</div></div>
+      <div><div class="snm" id="detailSellerNm" onclick="if(window._selectedListing)viewUserProfile(window._selectedListing.userId)" style="cursor:pointer">Jason K.</div><div class="sinf">얼바인 &#183; 28회 거래</div></div>
     </div>
 
     <div class="rev-section">
@@ -2533,11 +2576,11 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
     <div class="wsep"></div>
     <div class="wsec">제목 Title</div>
-    <input class="winp" placeholder="어떤 물건을 판매하시나요? What are you selling?"/>
+    <input id="listingTitle" class="winp" placeholder="어떤 물건을 판매하시나요? What are you selling?"/>
     <div class="wsec">가격 Price</div>
-    <div class="wrow"><input class="winp" placeholder="$ 금액 Amount" type="number"/><input class="winp" id="freeT" placeholder="무료 나눔?" readonly style="cursor:pointer;color:var(--green);font-weight:500;flex:.65" onclick="this.value=this.value?'':' 무료 Free'"/></div>
+    <div class="wrow"><input id="listingPrice" class="winp" placeholder="$ 금액 Amount" type="number"/><input class="winp" id="freeT" placeholder="무료 나눔?" readonly style="cursor:pointer;color:var(--green);font-weight:500;flex:.65" onclick="this.value=this.value?'':' 무료 Free'"/></div>
     <div class="wsec">상세 설명 Description</div>
-    <textarea class="wta" placeholder="상품 상태, 구매 시기, 직거래 희망 장소 등&#10;Condition, purchase date, meet-up location..."></textarea>
+    <textarea id="listingDesc" class="wta" placeholder="상품 상태, 구매 시기, 직거래 희망 장소 등&#10;Condition, purchase date, meet-up location..."></textarea>
     <div class="wsec">거래 지역 Location</div>
     <div class="wloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>얼바인 노스우드 &#183; Verified &#10003;</span></div>
     <button class="wsub" onclick="submitListing()">등록하기 Post Listing</button>
