@@ -641,8 +641,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   const app  = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db   = getFirestore(app);
-
-  // 전역 노출 (main script에서 접근)
+  // 전역 노출
   window._auth = auth;
   window._db   = db;
 
@@ -766,6 +765,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     try {
       const result = await window._confirmResult.confirm(otp);
       const user = result.user;
+      window._currentUser = user; // 즉시 저장
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (snap.exists()) {
         window._userProfile = snap.data();
@@ -820,60 +820,60 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   // 📍 GPS 동네 인증 (우편번호 → 동네이름)
   // ════════════════════════════════════════════════════════
   window.verifyWithGPS = async function() {
-    if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); closeModal(); return; }
     if (!navigator.geolocation) { alert('GPS를 지원하지 않는 브라우저예요.'); return; }
 
     const btn = document.getElementById('gpsVerifyBtn');
-    if (btn) { btn.textContent = '위치 감지 중...'; btn.disabled=true; }
+    if (btn) { btn.textContent = '위치 감지 중...'; btn.disabled = true; }
 
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const { latitude:lat, longitude:lng } = pos.coords;
+      let neighborhood = 'OC 이웃';
+      let zipCode = '';
+
+      // 1단계: 우편번호 → 동네이름
       try {
-        // 우편번호로 동네 이름 찾기
-        let neighborhood = 'OC 이웃';
-        let zipCode = '';
-
-        const geoUrl = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`;
-        try {
-          const geoRes = await fetch(geoUrl);
-          const geoData = await geoRes.json();
-          zipCode = geoData.address?.postcode?.slice(0,5) || '';
-          neighborhood = ZIP_NEIGHBORHOODS[zipCode]
-            || geoData.address?.city
-            || geoData.address?.town
-            || 'OC 이웃';
-        } catch(geoErr) {
-          console.log('주소 변환 오류:', geoErr.message);
-        }
-
-        // Firestore 저장 (정확한 좌표 저장 안 함 - 프라이버시)
-        await updateDoc(doc(db,'users',window._currentUser.uid), {
-          neighborhood,
-          zipCode,
-          verified: true,
-          verifiedAt: serverTimestamp()
-        });
-
-        if (window._userProfile) {
-          window._userProfile.verified = true;
-          window._userProfile.neighborhood = neighborhood;
-        }
-
-        // UI 업데이트
-        const gpsResult = document.getElementById('gpsResult');
-        if (gpsResult) gpsResult.textContent = neighborhood;
-        const parea = document.querySelector('.parea');
-        if (parea) parea.textContent = neighborhood;
-
-        if (btn) { btn.textContent = '✅ 인증 완료!'; }
-        alert(`동네 인증 완료! 🍊\n${neighborhood}으로 설정됐어요.`);
-        setTimeout(() => closeModal(), 1000);
+        const geoRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
+        );
+        const geoData = await geoRes.json();
+        zipCode      = geoData.address?.postcode?.slice(0,5) || '';
+        neighborhood = ZIP_NEIGHBORHOODS[zipCode]
+                    || geoData.address?.city
+                    || geoData.address?.town
+                    || 'OC 이웃';
       } catch(e) {
-        if (btn) { btn.textContent='GPS로 인증하기'; btn.disabled=false; }
-        alert('저장 실패: '+e.message);
+        console.log('주소 변환 오류:', e.message);
       }
+
+      // 2단계: UI 즉시 업데이트 (Firebase 전에)
+      const gpsResult = document.getElementById('gpsResult');
+      if (gpsResult) gpsResult.textContent = '📍 ' + neighborhood;
+      const parea = document.querySelector('.parea');
+      if (parea) parea.textContent = neighborhood;
+      if (btn) { btn.textContent = '✅ ' + neighborhood; btn.disabled = false; }
+
+      // 3단계: Firebase 저장 (로그인된 경우만)
+      const cu = window._currentUser || (window._auth && window._auth.currentUser);
+      if (cu) {
+        try {
+          await updateDoc(doc(db,'users',cu.uid), {
+            neighborhood, zipCode, verified:true, verifiedAt:serverTimestamp()
+          });
+          if (window._userProfile) {
+            window._userProfile.verified    = true;
+            window._userProfile.neighborhood = neighborhood;
+          }
+          alert('동네 인증 완료! 🍊\n' + neighborhood + '으로 설정됐어요.');
+        } catch(e) {
+          alert('동네 감지됨: ' + neighborhood + '\n(저장은 로그인 후 됩니다)');
+        }
+      } else {
+        alert('동네 감지됨: ' + neighborhood + '\n로그인 후 저장됩니다.');
+      }
+      setTimeout(() => closeModal(), 1200);
+
     }, () => {
-      if (btn) { btn.textContent='GPS로 인증하기'; btn.disabled=false; }
+      if (btn) { btn.textContent = 'GPS로 인증하기'; btn.disabled = false; }
       alert('위치 접근이 거부됐어요.\n브라우저 설정에서 위치를 허용해주세요.');
     }, { enableHighAccuracy:false, timeout:10000 });
   };
@@ -882,29 +882,20 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   // 📦 매물
   // ════════════════════════════════════════════════════════
   window.submitListing = async function() {
-    // 로그인 체크
-    if (!window._currentUser) {
-      alert('로그인이 필요해요.\n프로필 탭에서 로그인해주세요.');
-      showSc('auth'); return;
-    }
-    // 동네 인증 체크
+    const cu = window._currentUser || (window._auth && window._auth.currentUser);
+    if (!cu) { alert('로그인이 필요해요.\n프로필 탭 → 로그인/회원가입'); showSc('auth'); return; }
+    window._currentUser = cu;
     if (!window._userProfile?.verified) {
-      alert('동네 인증 후 등록 가능해요.\n프로필 탭에서 GPS 인증을 해주세요.');
-      openModal(); return;
+      alert('동네 GPS 인증 후 등록 가능해요.\n프로필 탭 → 동네 인증'); openModal(); return;
     }
-    // 제목 읽기
     const titleEl = document.getElementById('listingTitle');
     const priceEl = document.getElementById('listingPrice');
     const descEl  = document.getElementById('listingDesc');
-    const title = (titleEl?.value || '').trim();
-    const price = (priceEl?.value || '').trim();
-    const desc  = (descEl?.value  || '').trim();
+    const title = (titleEl?.value||'').trim();
+    const price = (priceEl?.value||'0');
+    const desc  = (descEl?.value||'').trim();
     const cat   = document.querySelector('#sc-write .catc.on')?.textContent?.trim() || '기타';
-    if (!title) {
-      alert('제목을 입력해주세요.');
-      titleEl?.focus();
-      return;
-    }
+    if (!title) { alert('제목을 입력해주세요.'); titleEl?.focus(); return; }
 
     // 사진 (base64 최대 3장)
     const photos = window._pendingPhotos || [];
@@ -930,9 +921,6 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       window._pendingPhotos = [];
       alert('매물 등록 완료! 🍊');
       showSc('home'); setNav('home');
-      window._pendingPhotos = [];
-      const preview = document.getElementById('photoPreview');
-      if (preview) preview.innerHTML = '';
       loadListings();
     } catch(e) { alert('등록 실패: '+e.message); }
   };
@@ -940,77 +928,52 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   // 사진 추가 (base64로 Firestore 저장 - Storage 없이)
   window.addPhotoFirebase = function(input) {
     if (!input.files || !input.files[0]) return;
-    if (!window._pendingPhotos) window._pendingPhotos = [];
-    if (window._pendingPhotos.length >= 3) { alert('사진은 최대 3장이에요.'); return; }
     const file = input.files[0];
+    if (file.size > 500000) { alert('사진이 너무 커요. 500KB 이하로 올려주세요.'); return; }
     const reader = new FileReader();
     reader.onload = (e) => {
-      // Canvas로 자동 압축 (최대 800px, 품질 70%)
-      const img = new Image();
-      img.onload = () => {
-        const MAX = 800;
-        let w = img.width, h = img.height;
-        if (w > MAX || h > MAX) {
-          if (w > h) { h = Math.round(h * MAX/w); w = MAX; }
-          else { w = Math.round(w * MAX/h); h = MAX; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        const compressed = canvas.toDataURL('image/jpeg', 0.7);
-        const sizeKB = Math.round(compressed.length * 0.75 / 1024);
-        window._pendingPhotos.push(compressed);
-        // 미리보기
-        const preview = document.getElementById('photoPreview');
-        if (preview) {
-          const thumb = document.createElement('div');
-          thumb.style.cssText = 'position:relative;display:inline-block;margin:4px';
-          thumb.innerHTML = '<img src="'+compressed+'" style="width:70px;height:70px;object-fit:cover;border-radius:8px;display:block">'
-            + '<button onclick="removePhoto(this)" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#C0392B;color:#fff;border:none;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">×</button>';
-          preview.appendChild(thumb);
-        }
-        console.log('사진 압축완료:', sizeKB+'KB');
-      };
-      img.src = e.target.result;
+      if (!window._pendingPhotos) window._pendingPhotos = [];
+      if (window._pendingPhotos.length >= 3) { alert('사진은 최대 3장이에요.'); return; }
+      window._pendingPhotos.push(e.target.result);
+      // 미리보기 추가
+      const preview = document.getElementById('photoPreview');
+      if (preview) {
+        const img = document.createElement('img');
+        img.src = e.target.result;
+        img.style.cssText='width:70px;height:70px;object-fit:cover;border-radius:8px;margin:4px';
+        preview.appendChild(img);
+      }
+      alert(`사진 ${window._pendingPhotos.length}장 추가됨`);
     };
     reader.readAsDataURL(file);
-    input.value = ''; // 같은 파일 재선택 가능하게
-  };
-
-  window.removePhoto = function(btn) {
-    const thumb = btn.parentElement;
-    const idx = Array.from(thumb.parentElement.children).indexOf(thumb);
-    if (window._pendingPhotos) window._pendingPhotos.splice(idx, 1);
-    thumb.remove();
   };
 
   window.loadListings = async function() {
     try {
       const q = query(collection(db,'listings'),
-        where('status','==','active'),
-        orderBy('createdAt','desc'), limit(30));
-      const snap = await getDocs(q).catch(e => { console.log('쿼리 오류:', e.message); return {docs:[]}; });
-      const list = snap.docs.map(d=>({id:d.id,...d.data()}));
+        where('status','==','active'), limit(50));
+      const snap = await getDocs(q).catch(()=>({docs:[]}));
+      const list = snap.docs
+        .map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>{
+          if(a.isBoost&&!b.isBoost) return -1;
+          if(!a.isBoost&&b.isBoost) return 1;
+          return (b.createdAt?.seconds||0)-(a.createdAt?.seconds||0);
+        });
       _renderListings(list);
     } catch(e) { console.log('매물 로드:', e.message); }
   };
-
-  // 매물 저장소
-  window._listingStore = {};
 
   function _renderListings(list) {
     const feed = document.querySelector('#p-market .sscroll');
     if (!feed || list.length===0) return;
     feed.querySelectorAll('.rc').forEach(c=>c.remove());
     list.forEach(l => {
-      window._listingStore[l.id] = l;
       const el = document.createElement('div');
       el.className='card rc';
-      el.dataset.lid = l.id;
       el.style.cssText='display:flex;gap:12px;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);cursor:pointer';
       const thumb = l.images?.[0]
-        ? `<img src="${l.images[0]}" style="width:90px;height:90px;border-radius:10px;object-fit:cover;flex-shrink:0" loading="lazy">`
+        ? `<img src="${l.images[0]}" style="width:90px;height:90px;border-radius:10px;object-fit:cover;flex-shrink:0">`
         : `<div style="width:90px;height:90px;border-radius:10px;background:var(--ivory);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:28px">📦</div>`;
       el.innerHTML = thumb
         + `<div style="flex:1;min-width:0">
@@ -1018,52 +981,20 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
             <div style="font-size:12px;color:var(--muted);margin-bottom:4px">${l.neighborhood||'OC'} · 방금</div>
             <div style="font-size:15px;font-weight:700;color:#3E2510">${l.isFree?'무료 나눔':'$'+(l.price||0).toLocaleString()}</div>
            </div>`;
-      el.addEventListener('click', () => {
-        const listing = window._listingStore[l.id];
-        window._selectedListing = listing;
-        _loadDetail(listing);
-        showSc('detail');
-      });
+      el.onclick = () => { window._selectedListing=l; showSc('detail'); _loadDetail(l); };
       feed.insertBefore(el, feed.firstChild);
     });
   }
 
   function _loadDetail(l) {
-    // 제목
     const t = document.getElementById('detailTitle');
-    if (t) t.textContent = l.title || '';
-
-    // 가격
-    const p = document.getElementById('dPrice');
-    if (p) p.textContent = l.isFree ? '무료 나눔' : ('$'+(l.price||0).toLocaleString());
-
-    // 설명
+    const p = document.getElementById('detailPrice');
     const d = document.getElementById('detailDesc');
-    if (d) d.textContent = l.description || '설명이 없어요.';
-
-    // 판매자
-    const snm = document.getElementById('detailSellerNm');
-    if (snm) snm.textContent = l.sellerNickname || '판매자';
-
-    const sinf = document.getElementById('detailSellerInfo');
-    if (sinf) sinf.textContent = (l.neighborhood||'OC') + ' · 판매자';
-
-    // 사진 표시
-    const phArea = document.querySelector('#sc-detail .ph-area');
-    if (phArea && l.images && l.images.length > 0) {
-      const existing = phArea.querySelector('.ph-img-real');
-      if (!existing) {
-        const img = document.createElement('img');
-        img.src = l.images[0];
-        img.className = 'ph-img-real';
-        img.style.cssText = 'width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;border-radius:inherit';
-        phArea.style.position = 'relative';
-        phArea.appendChild(img);
-      } else {
-        existing.src = l.images[0];
-      }
-    }
-
+    const n = document.getElementById('detailNeighborhood');
+    if (t) t.textContent = l.title;
+    if (p) p.textContent = l.isFree ? '무료 나눔' : '$'+l.price?.toLocaleString();
+    if (d) d.textContent = l.description || '';
+    if (n) n.textContent = l.neighborhood || '';
     // 조회수 증가
     updateDoc(doc(db,'listings',l.id), {viewCount:increment(1)}).catch(()=>{});
   }
@@ -1073,7 +1004,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     if (!window._currentUser) return;
     try {
       const q = query(collection(db,'listings'),
-        where('userId','==',window._currentUser.uid), limit(30));
+        where('userId','==',window._currentUser.uid),
+        orderBy('createdAt','desc'));
       const snap = await getDocs(q);
       const list = snap.docs.map(d=>({id:d.id,...d.data()}));
       const container = document.getElementById('myListings');
@@ -1086,31 +1018,18 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       list.forEach(l => {
         const el = document.createElement('div');
         el.style.cssText='display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);align-items:center';
-        // 상태 배지 색상
-        const statusColor = l.status==='active' ? 'var(--green)' : l.status==='reserved' ? 'var(--or)' : 'var(--muted)';
-        const statusText  = l.status==='active' ? '판매중' : l.status==='reserved' ? '예약중' : '판매완료';
-        window._listingStore = window._listingStore || {};
-        window._listingStore[l.id] = l;
         el.innerHTML=`
-          <div style="flex:1;min-width:0;cursor:pointer" data-lid="${l.id}" onclick="var _l=window._listingStore[this.dataset.lid];if(_l){window._selectedListing=_l;_loadDetail(_l);showSc('detail');}">
-            <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.title}</div>
-            <div style="display:flex;align-items:center;gap:6px">
-              <span style="font-size:12px;color:var(--muted)">${l.isFree?'무료':'$'+(l.price||0).toLocaleString()}</span>
-              <span style="font-size:11px;font-weight:600;color:${statusColor};background:${statusColor}18;padding:2px 7px;border-radius:20px">${statusText}</span>
-            </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.title}</div>
+            <div style="font-size:12px;color:var(--muted)">${l.isFree?'무료':'$'+l.price?.toLocaleString()} · ${l.status==='active'?'판매중':l.status==='reserved'?'예약중':'판매완료'}</div>
           </div>
-          <div style="display:flex;gap:5px;flex-shrink:0">
-            <button data-lid="${l.id}" onclick="var _l=window._listingStore&&window._listingStore[this.dataset.lid];if(_l)editListing(_l);" style="padding:6px 10px;border:1.5px solid var(--or-bd);border-radius:6px;background:var(--or-bg);color:var(--or);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">수정</button>
-            <button onclick="markSold('${l.id}')" style="padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--ivory);color:#3E2510;font-size:11px;cursor:pointer;font-family:inherit">${l.status==='sold'?'재등록':'완료'}</button>
+          <div style="display:flex;gap:6px;flex-shrink:0">
             <button onclick="deleteListing('${l.id}')" style="padding:6px 10px;border:1px solid #F5C6C2;border-radius:6px;background:#FDF0EE;color:#C0392B;font-size:11px;cursor:pointer;font-family:inherit">삭제</button>
+            <button onclick="markSold('${l.id}')" style="padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--ivory);color:#3E2510;font-size:11px;cursor:pointer;font-family:inherit">${l.status==='sold'?'재등록':'완료'}</button>
           </div>`;
         container.appendChild(el);
       });
-    } catch(e) {
-      console.log('내 매물 로드:', e.message);
-      const c = document.getElementById('myListings');
-      if (c) c.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">불러오는 중 오류가 났어요.<br>로그인 상태를 확인해주세요.</div>';
-    }
+    } catch(e) { console.log('내 매물 로드:', e.message); }
   };
 
   window.deleteListing = async function(id) {
@@ -1133,9 +1052,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   window.startChat = async function() {
     const l = window._selectedListing;
     if (!l) {
-      alert('매물을 먼저 선택해주세요.\n홈에서 매물을 클릭하면 채팅할 수 있어요.');
-      showSc('home'); setNav('home');
-      return;
+      alert('매물을 먼저 선택해주세요. 홈에서 매물을 클릭하세요.');
+      showSc('home'); setNav('home'); return;
     }
     if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); return; }
     if (l.userId===window._currentUser.uid) { alert('내 매물이에요.'); return; }
@@ -1153,24 +1071,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       });
     }
     window._activeChatId = chatId;
-
-    // 채팅 헤더 업데이트
-    const cpn = document.querySelector('#sc-chat .cpn');
-    const cpt = document.querySelector('#sc-chat .cpt');
-    if (cpn) cpn.textContent = l.sellerNickname || '판매자';
-    if (cpt) cpt.textContent = l.title || '';
-
-    // 기존 메시지 초기화
-    const msgList = document.getElementById('msgList');
-    if (msgList) {
-      // demo 메시지 숨김, Firebase 메시지만 표시
-      msgList.querySelectorAll('.msg').forEach(m => {
-        if (!m.id || !m.id.startsWith('m-')) m.style.display = 'none';
-      });
-    }
-
     showSc('chat');
-    setTimeout(() => window._loadMessages(chatId), 100);
+    window._loadMessages(chatId);
   };
 
   window._loadMessages = function(chatId) {
@@ -1215,13 +1117,12 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     if (!container) return;
     try {
       const buyerQ = query(collection(db,'chats'),
-        where('buyerId','==',window._currentUser.uid), limit(20));
+        where('buyerId','==',window._currentUser.uid),
+        orderBy('lastMessageAt','desc'), limit(20));
       const sellerQ = query(collection(db,'chats'),
-        where('sellerId','==',window._currentUser.uid), limit(20));
-      const [buyerSnap,sellerSnap] = await Promise.all([
-        getDocs(buyerQ).catch(()=>({docs:[]})),
-        getDocs(sellerQ).catch(()=>({docs:[]}))
-      ]);
+        where('sellerId','==',window._currentUser.uid),
+        orderBy('lastMessageAt','desc'), limit(20));
+      const [buyerSnap,sellerSnap] = await Promise.all([getDocs(buyerQ),getDocs(sellerQ)]);
       const all = [...buyerSnap.docs,...sellerSnap.docs]
         .map(d=>({id:d.id,...d.data()}))
         .sort((a,b)=>b.lastMessageAt?.seconds-a.lastMessageAt?.seconds);
@@ -1252,11 +1153,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         };
         container.appendChild(el);
       });
-    } catch(e) {
-      console.log('채팅 목록 오류:', e.message);
-      const c = document.getElementById('chatListContainer');
-      if (c) c.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:36px;margin-bottom:12px">💬</div><div>채팅 목록을 불러오지 못했어요.<br>잠시 후 다시 시도해주세요.</div></div>';
-    }
+    } catch(e) { console.log('채팅 목록 오류:', e.message); }
   };
 
   // ════════════════════════════════════════════════════════
@@ -1376,7 +1273,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
       // 유저 매물
       const listQ = query(collection(db,'listings'),
-        where('userId','==',userId), where('status','==','active'), limit(10));
+        where('userId','==',userId), where('status','==','active'),
+        orderBy('createdAt','desc'), limit(10));
       const listSnap = await getDocs(listQ);
       const listings = listSnap.docs.map(d=>({id:d.id,...d.data()}));
       const listContainer = document.getElementById('userListings');
@@ -1389,9 +1287,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
             const el=document.createElement('div');
             el.style.cssText='display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);background:#fff;cursor:pointer';
             el.innerHTML=`<div style="flex:1"><div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:3px">${l.title}</div><div style="font-size:13px;color:var(--or);font-weight:700">${l.isFree?'무료 나눔':'$'+(l.price||0).toLocaleString()}</div></div>`;
-            window._listingStore = window._listingStore || {};
-            window._listingStore[l.id] = l;
-            el.addEventListener('click', ()=>{ window._selectedListing=l; _loadDetail(l); showSc('detail'); });
+            el.onclick=()=>{ window._selectedListing=l; showSc('detail'); };
             listContainer.appendChild(el);
           });
         }
@@ -1399,7 +1295,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
       // 유저 리뷰
       const revQ = query(collection(db,'reviews'),
-        where('targetId','==',userId), limit(5));
+        where('targetId','==',userId), orderBy('createdAt','desc'), limit(5));
       const revSnap = await getDocs(revQ);
       const revContainer = document.getElementById('userReviews');
       if (revContainer) {
@@ -1426,242 +1322,6 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       HIDENAV.push(HIDENAV_ADD);
     }
   });
-
-
-  // ── 구매내역 ──
-  window.showPurchaseHistory = async function() {
-    if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); return; }
-    // 내가 buyerId인 채팅들 = 구매 내역
-    try {
-      const q = query(collection(db,'chats'),
-        where('buyerId','==',window._currentUser.uid), limit(20));
-      const snap = await getDocs(q).catch(()=>({docs:[]}));
-      const items = snap.docs.map(d=>({id:d.id,...d.data()}));
-
-      const html = items.length === 0
-        ? '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">🛍️</div><div style="font-size:15px;font-weight:700;color:var(--mid)">구매내역이 없어요</div></div>'
-        : items.map(c=>`
-            <div onclick="window._activeChatId='${c.id}';window._loadMessages('${c.id}');showSc('chat')"
-              style="display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:#fff;cursor:pointer">
-              <div style="flex:1">
-                <div style="font-size:14px;font-weight:600;color:#3E2510;margin-bottom:3px">${c.listingTitle||'매물'}</div>
-                <div style="font-size:12px;color:var(--muted)">판매자: ${c.sellerNickname||'판매자'} · ${c.status==='completed'?'거래완료':'진행중'}</div>
-                <div style="font-size:13px;font-weight:700;color:var(--or);margin-top:2px">$${(c.listingPrice||0).toLocaleString()}</div>
-              </div>
-              <div style="font-size:11px;color:var(--muted);flex-shrink:0">${c.status==='completed'?'✅ 완료':'💬 채팅중'}</div>
-            </div>`).join('');
-
-      // 임시 모달로 표시
-      _showSheet('나의 구매내역', html);
-    } catch(e) { alert('불러오기 실패: '+e.message); }
-  };
-
-  // ── 관심목록 ──
-  window.showSavedListings = async function() {
-    if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); return; }
-    const saved = JSON.parse(localStorage.getItem('om_saved_'+window._currentUser.uid)||'[]');
-    if (saved.length === 0) {
-      _showSheet('관심 목록', '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">🤍</div><div style="font-size:15px;font-weight:700;color:var(--mid)">관심 목록이 비어있어요</div><div style="font-size:13px;margin-top:6px">매물에서 ♡ 를 눌러 저장하세요</div></div>');
-      return;
-    }
-    // saved된 listing id들로 매물 가져오기
-    try {
-      const promises = saved.slice(0,10).map(id => getDoc(doc(db,'listings',id)));
-      const snaps = await Promise.all(promises);
-      const items = snaps.filter(s=>s.exists()).map(s=>({id:s.id,...s.data()}));
-      const html = items.map(l=>`
-        <div onclick="openDemoDetail()"/g,"'")})"
-          style="display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);background:#fff;cursor:pointer">
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:2px">${l.title}</div>
-            <div style="font-size:13px;font-weight:700;color:var(--or)">${l.isFree?'무료 나눔':'$'+(l.price||0).toLocaleString()}</div>
-          </div>
-        </div>`).join('');
-      _showSheet('관심 목록', html);
-    } catch(e) { alert('불러오기 실패'); }
-  };
-
-  // ── 관심 추가/제거 (하트 버튼) ──
-  window.toggleSave = function(listingId) {
-    if (!window._currentUser) { alert('로그인이 필요해요.'); return; }
-    const key = 'om_saved_'+window._currentUser.uid;
-    const saved = JSON.parse(localStorage.getItem(key)||'[]');
-    const idx = saved.indexOf(listingId);
-    if (idx >= 0) {
-      saved.splice(idx,1);
-      alert('관심 목록에서 제거됐어요.');
-    } else {
-      saved.unshift(listingId);
-      alert('관심 목록에 추가됐어요 🤍');
-    }
-    localStorage.setItem(key, JSON.stringify(saved));
-    // 하트 버튼 상태 업데이트
-    const heartBtn = document.getElementById('heartBtn');
-    if (heartBtn) heartBtn.style.color = idx >= 0 ? '' : '#E8571A';
-  };
-
-  // ── 간단 바텀시트 ──
-  function _showSheet(title, html) {
-    let sheet = document.getElementById('_tmpSheet');
-    if (!sheet) {
-      sheet = document.createElement('div');
-      sheet.id = '_tmpSheet';
-      sheet.style.cssText = 'position:fixed;inset:0;z-index:300;display:flex;flex-direction:column;justify-content:flex-end';
-      sheet.innerHTML = '<div onclick="this.parentElement.remove()" style="flex:1;background:rgba(0,0,0,.4)"></div>'
-        + '<div style="background:#fff;border-radius:20px 20px 0 0;max-height:80vh;display:flex;flex-direction:column">'
-        + '<div style="padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">'
-        + '<span id="_sheetTitle" style="font-size:16px;font-weight:700;color:#3E2510"></span>'
-        + '<button onclick="document.getElementById('_tmpSheet').remove()" style="background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer">×</button>'
-        + '</div><div id="_sheetBody" style="overflow-y:auto;flex:1"></div></div>';
-      document.body.appendChild(sheet);
-    } else {
-      sheet.style.display = 'flex';
-    }
-    document.getElementById('_sheetTitle').textContent = title;
-    document.getElementById('_sheetBody').innerHTML = html;
-  }
-
-
-  // ════════════════════════════════════════════════════════
-  // ✏️ 매물 수정
-  // ════════════════════════════════════════════════════════
-
-  // 수정 화면 열기 - 기존 데이터 채우기
-  window.editListing = function(listing) {
-    if (typeof listing === 'string') {
-      try { listing = JSON.parse(listing); } catch(e) { return; }
-    }
-    window._editingListing = listing;
-    window._editPhotos = [...(listing.images || [])];
-
-    // 기존 값 채우기
-    const titleEl = document.getElementById('editTitle');
-    const priceEl = document.getElementById('editPrice');
-    const descEl  = document.getElementById('editDesc');
-    if (titleEl) titleEl.value = listing.title || '';
-    if (priceEl) priceEl.value = listing.isFree ? '' : (listing.price || '');
-    if (descEl)  descEl.value  = listing.description || '';
-
-    // 상태 버튼 초기화
-    ['active','reserved','sold'].forEach(s => {
-      const btn = document.getElementById('editStatus_'+s);
-      if (!btn) return;
-      const isActive = s === (listing.status || 'active');
-      btn.style.borderColor  = isActive ? 'var(--or)' : 'var(--line)';
-      btn.style.background   = isActive ? 'var(--or-bg)' : '#fff';
-      btn.style.color        = isActive ? 'var(--or)' : 'var(--muted)';
-    });
-    window._editStatus = listing.status || 'active';
-
-    // 기존 사진 미리보기
-    const preview = document.getElementById('editPhotoPreview');
-    if (preview) {
-      preview.innerHTML = '';
-      (listing.images || []).forEach((src, i) => {
-        const div = document.createElement('div');
-        div.style.cssText = 'position:relative;display:inline-block';
-        div.innerHTML = `<img src="${src}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;display:block">`
-          + `<button onclick="removeEditPhoto(${i})" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#C0392B;color:#fff;border:none;font-size:11px;cursor:pointer">×</button>`;
-        preview.appendChild(div);
-      });
-    }
-
-    showSc('editlisting');
-  };
-
-  // 상태 선택
-  window.selectEditStatus = function(btn, status) {
-    window._editStatus = status;
-    ['active','reserved','sold'].forEach(s => {
-      const b = document.getElementById('editStatus_'+s);
-      if (!b) return;
-      const isActive = s === status;
-      b.style.borderColor = isActive ? 'var(--or)' : 'var(--line)';
-      b.style.background  = isActive ? 'var(--or-bg)' : '#fff';
-      b.style.color       = isActive ? 'var(--or)' : 'var(--muted)';
-    });
-  };
-
-  // 수정 사진 추가
-  window.addEditPhoto = function(input) {
-    if (!input.files || !input.files[0]) return;
-    if (!window._editPhotos) window._editPhotos = [];
-    if (window._editPhotos.length >= 3) { alert('사진은 최대 3장이에요.'); return; }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const MAX = 800;
-        let w = img.width, h = img.height;
-        if (w > MAX || h > MAX) {
-          if (w > h) { h = Math.round(h * MAX/w); w = MAX; }
-          else { w = Math.round(w * MAX/h); h = MAX; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const compressed = canvas.toDataURL('image/jpeg', 0.7);
-        window._editPhotos.push(compressed);
-        const preview = document.getElementById('editPhotoPreview');
-        if (preview) {
-          const div = document.createElement('div');
-          div.style.cssText = 'position:relative;display:inline-block';
-          const idx = window._editPhotos.length - 1;
-          div.innerHTML = `<img src="${compressed}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;display:block">`
-            + `<button onclick="removeEditPhoto(${idx})" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#C0392B;color:#fff;border:none;font-size:11px;cursor:pointer">×</button>`;
-          preview.appendChild(div);
-        }
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(input.files[0]);
-    input.value = '';
-  };
-
-  window.removeEditPhoto = function(idx) {
-    if (window._editPhotos) window._editPhotos.splice(idx, 1);
-    // 미리보기 새로고침
-    if (window._editingListing) {
-      const temp = {...window._editingListing, images: window._editPhotos};
-      window.editListing(temp);
-    }
-  };
-
-  // 수정 저장
-  window.saveEditListing = async function() {
-    const listing = window._editingListing;
-    if (!listing?.id) { alert('수정할 매물 정보가 없어요.'); return; }
-
-    const titleEl = document.getElementById('editTitle');
-    const priceEl = document.getElementById('editPrice');
-    const descEl  = document.getElementById('editDesc');
-
-    const title = (titleEl?.value || '').trim();
-    const price = priceEl?.value ? Number(priceEl.value) : 0;
-    const desc  = (descEl?.value || '').trim();
-
-    if (!title) { alert('제목을 입력해주세요.'); return; }
-
-    try {
-      await updateDoc(doc(db, 'listings', listing.id), {
-        title,
-        price,
-        isFree:      price === 0,
-        description: desc,
-        status:      window._editStatus || listing.status || 'active',
-        images:      window._editPhotos || listing.images || [],
-        updatedAt:   serverTimestamp(),
-      });
-
-      alert('수정 완료! 🍊');
-      window._editingListing = null;
-      window._editPhotos = [];
-      showSc('mylistings');
-      loadMyListings(); // 목록 새로고침
-    } catch(e) {
-      alert('수정 실패: ' + e.message);
-    }
-  };
 
 </script>
 </head>
@@ -1755,7 +1415,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
 
     <!-- CARD: boosted -->
-    <div class="card" onclick="openDemoDetail()"demo_"+Math.random().toString(36).slice(2),title:"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')">
+    <div class="card" onclick="showSc('detail')">
       <div class="cth th-elec"><svg viewBox="0 0 24 24" style="width:30px;height:30px;fill:none;stroke:#4A90D9;stroke-width:1.5;stroke-linecap:round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
       <div class="cbody">
         <div>
@@ -1772,7 +1432,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       <div class="boost-tag"><svg viewBox="0 0 24 24"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>Boost</div>
     </div>
 
-    <div class="card" onclick="openDemoDetail()"demo_"+Math.random().toString(36).slice(2),title:"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')">
+    <div class="card" onclick="showSc('detail')">
       <div class="cth th-furn"><svg viewBox="0 0 24 24" style="width:30px;height:30px;fill:none;stroke:#8B7355;stroke-width:1.5;stroke-linecap:round"><path d="M20 9V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2"/><path d="M2 11v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v2H6v-2a2 2 0 0 0-4 0z"/></svg></div>
       <div class="cbody">
         <div>
@@ -1792,7 +1452,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
 
     <!-- SOLD card -->
-    <div class="card" onclick="openDemoDetail()">
+    <div class="card">
       <div class="cth th-sprt" style="position:relative">
         <svg viewBox="0 0 24 24" style="width:28px;height:28px;fill:none;stroke:#4A7C59;stroke-width:1.5;stroke-linecap:round"><path d="M20 16V7a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 4 7v9a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 20 16z"/></svg>
         <div class="sold-v"><span>거래완료</span></div>
@@ -1807,7 +1467,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       </div>
     </div>
 
-    <div class="card" onclick="openDemoDetail()"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')">
+    <div class="card" onclick="showSc('detail')">
       <div class="cth th-plnt"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#5B8A3C;stroke-width:1.5;stroke-linecap:round"><path d="M12 22V12"/><path d="M12 12C12 12 7 10 7 6a5 5 0 0 1 10 0c0 4-5 6-5 6z"/></svg></div>
       <div class="cbody">
         <div>
@@ -2017,13 +1677,13 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
     <div class="sech"><div class="secht">커뮤니티 Community<small>· 수다방 &amp; 모임</small></div><div class="secha">+ 글쓰기</div></div>
 
-    <div class="comm-card" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer">
+    <div class="comm-card">
       <div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div>
       <div class="cc-title">얼바인 스펙트럼 주차 너무 힘들죠? 😅</div>
       <div class="cc-prev">토요일 저녁에 갔는데 B2가 5시에 이미 만차... 보통 어느 층 세워요?</div>
       <div class="cc-foot"><div class="cc-av">M</div><span class="cc-author">박민지</span><div class="cc-st"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>34</div><div class="cc-st"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>18</div></div>
     </div>
-    <div class="comm-card" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer">
+    <div class="comm-card">
       <div class="cc-top"><span class="cc-cat cc-info">정보</span><span class="cc-time">22분 전</span></div>
       <div class="cc-title">레이크포레스트에 H마트 연내 오픈 예정!</div>
       <div class="cc-prev">구 랄프스 자리에 생긴다고 들었어요. 공식 확인은 아니지만 기대됩니다!</div>
@@ -2034,21 +1694,21 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
     <!-- 모임 within 커뮤니티 -->
     <div class="sech" style="padding-top:8px"><div class="secht">동네 모임 Gatherings</div><div class="secha">+ 만들기</div></div>
-    <div class="meetcard" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer">
+    <div class="meetcard">
       <div class="mc-top">
         <div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div>
         <div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park 테니스장</div></div>
       </div>
       <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명 참가</span><button class="mc-join">참가</button></div>
     </div>
-    <div class="meetcard" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer">
+    <div class="meetcard">
       <div class="mc-top">
         <div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">12</div></div>
         <div><div class="mc-t">한인 독서모임 — 4월 책</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 스타벅스 &#183; Culver Dr.</div></div>
       </div>
       <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#FAD4C8">A</div><div class="mc-av" style="background:#C8D4FA">B</div></div><span class="mc-cnt">+6명 참가</span><button class="mc-join">참가</button></div>
     </div>
-    <div class="comm-card" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer">
+    <div class="comm-card">
       <div class="cc-top"><span class="cc-cat cc-ask">질문</span><span class="cc-time">1시간 전</span></div>
       <div class="cc-title">알리소비에호 근처 맛있는 한식당 추천해 주세요</div>
       <div class="cc-prev">이사 온 지 한 달 됐는데 삼겹살이나 순두부 맛있는 곳 15분 이내로!</div>
@@ -2061,8 +1721,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   <div class="panel" id="p-donate">
     <div class="bnrwrap"><div class="md-bnr"><div class="md-ic"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><div><div class="md-sp">Community</div><div class="md-ttl">이웃과 함께 나눠요</div><div class="md-sub">무료 나눔 &#183; Free Donations</div></div></div></div>
     <div class="sech"><div class="secht">나눔 Donations<small>· Free &amp; Funding</small></div><div class="secha">+ 나눔 등록</div></div>
-    <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="openDemoDetail()"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')"><div class="cth th-plnt"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#5B8A3C;stroke-width:1.5;stroke-linecap:round"><path d="M12 22V12"/><path d="M12 12C12 12 7 10 7 6a5 5 0 0 1 10 0c0 4-5 6-5 6z"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(91,138,60,.1);color:#3A6B20;">식물 Plants</div><div class="ctitle">몬스테라 화분 (대형)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>라구나힐스 &#183; 2시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
-    <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="openDemoDetail()"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')"><div class="cth th-baby"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#B0405A;stroke-width:1.5;stroke-linecap:round"><path d="M9 12H5a2 2 0 0 0-2 2v6h18v-6a2 2 0 0 0-2-2h-4"/><circle cx="12" cy="6" r="4"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(176,64,90,.1);color:#8B2040;">유아동/장난감 Baby &amp; Kids</div><div class="ctitle">아기 옷 묶음 (0&#8211;6개월)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 &#183; 4시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
+    <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="showSc('detail')"><div class="cth th-plnt"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#5B8A3C;stroke-width:1.5;stroke-linecap:round"><path d="M12 22V12"/><path d="M12 12C12 12 7 10 7 6a5 5 0 0 1 10 0c0 4-5 6-5 6z"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(91,138,60,.1);color:#3A6B20;">식물 Plants</div><div class="ctitle">몬스테라 화분 (대형)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>라구나힐스 &#183; 2시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
+    <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="showSc('detail')"><div class="cth th-baby"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#B0405A;stroke-width:1.5;stroke-linecap:round"><path d="M9 12H5a2 2 0 0 0-2 2v6h18v-6a2 2 0 0 0-2-2h-4"/><circle cx="12" cy="6" r="4"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(176,64,90,.1);color:#8B2040;">유아동/장난감 Baby &amp; Kids</div><div class="ctitle">아기 옷 묶음 (0&#8211;6개월)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 &#183; 4시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
     
     <div style="display:none"><!-- COMMUNITY FUNDING -->
     <div style="padding:14px 16px 6px">
@@ -2606,7 +2266,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   </div>
 <div class="sscroll">
     <div class="sech"><div class="secht">검색 결과<small>&#183; 12건</small></div></div>
-    <div class="card" onclick="openDemoDetail()"MacBook Pro 14 M3",price:1200,userId:"demo_seller",sellerNickname:"Jason K.",neighborhood:"얼바인",images:[],description:"데모 매물입니다."};showSc(\'detail\')">
+    <div class="card" onclick="showSc('detail')">
       <div class="cth th-elec"><svg viewBox="0 0 24 24" style="width:30px;height:30px;fill:none;stroke:#4A90D9;stroke-width:1.5;stroke-linecap:round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
       <div class="cbody">
         <div><div class="cbadge" style="background:rgba(74,144,217,.1);color:#2563A8;">가전/전자 Electronics</div>
@@ -2615,7 +2275,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         <div class="cprice">$1,200</div>
       </div>
     </div>
-    <div class="card" onclick="openDemoDetail()">
+    <div class="card">
       <div class="cth th-elec" style="position:relative"><svg viewBox="0 0 24 24" style="width:28px;height:28px;fill:none;stroke:#4A90D9;stroke-width:1.5"><rect x="5" y="2" width="14" height="20" rx="2"/></svg><div class="sold-v"><span>거래완료</span></div></div>
       <div class="cbody">
         <div><div class="cbadge" style="background:rgba(74,144,217,.1);color:#2563A8;">가전/전자 Electronics</div>
@@ -2650,7 +2310,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   <div class="dscroll">
     <div class="seller-row">
       <div class="sav">J</div>
-      <div><div class="snm" id="detailSellerNm" onclick="if(window._selectedListing)viewUserProfile(window._selectedListing.userId)" style="cursor:pointer">Jason K.</div><div class="sinf" id="detailSellerInfo">얼바인 · 거래 28회</div></div>
+      <div><div class="snm">Jason K.</div><div class="sinf">얼바인 &#183; 거래 28회</div></div>
       <div class="srt"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>4.9</div>
     </div>
     <div class="dblock">
@@ -2658,9 +2318,9 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         <div class="dprice" id="dPrice">$1,200</div>
         <div class="dprev" id="dPrev"></div>
       </div>
-      <div class="dtitle" id="detailTitle">MacBook Pro 14" M3 2023</div>
+      <div class="dtitle">MacBook Pro 14&#34; M3 2023</div>
       <div class="dcat">가전/전자 Electronics &#183; 컴퓨터</div>
-      <div class="ddesc" id="detailDesc">M3 칩, 16GB RAM, 512GB SSD. 구매 6개월. 케이스 씌워 사용 — 흠집 없음. 배터리 98%. 박스/충전기 포함. 직거래 희망 (얼바인 스펙트럼 근처).</div>
+      <div class="ddesc">M3 칩, 16GB RAM, 512GB SSD. 구매 6개월. 케이스 씌워 사용 — 흠집 없음. 배터리 98%. 박스/충전기 포함. 직거래 희망 (얼바인 스펙트럼 근처).</div>
       <div class="dstats">
         <div class="dstat"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>142</div>
         <div class="dstat"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>24</div>
@@ -2709,7 +2369,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     <div style="height:80px"></div>
   </div>
   <div class="dfoot">
-    <button class="fav-btn" id="favBtn" onclick="this.classList.toggle('on');if(window._selectedListing)toggleSave(window._selectedListing.id)">
+    <button class="fav-btn" id="favBtn" onclick="this.classList.toggle('on')">
       <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
     </button>
     <button class="cta-btn" onclick="startChat()">채팅으로 문의하기</button>
@@ -2778,7 +2438,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
     <div style="background:var(--w);padding:13px 16px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
       <div class="sav">J</div>
-      <div><div class="snm" id="detailSellerNm" onclick="if(window._selectedListing)viewUserProfile(window._selectedListing.userId)" style="cursor:pointer">Jason K.</div><div class="sinf">얼바인 &#183; 28회 거래</div></div>
+      <div><div class="snm">Jason K.</div><div class="sinf">얼바인 &#183; 28회 거래</div></div>
     </div>
 
     <div class="rev-section">
@@ -2830,12 +2490,13 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   </div>
   <div class="wscroll">
     <div class="wsec">사진 Photos (최대 10장)</div>
+    <input type="file" id="photoFile" accept="image/*" style="position:absolute;width:0;height:0;opacity:0" onchange="addPhotoFirebase(this)">
     <div class="pgrid" id="pgrid">
       <label class="phbox" for="photoFile" style="cursor:pointer">
-        <input type="file" id="photoFile" accept="image/*" style="display:none" onchange="addPhotoFirebase(this)">
         <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         <span>추가</span>
       </label>
+      <div id="photoPreview" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px"></div>
       <div id="photoPreview" style="display:contents"></div>
     </div>
     <div class="phctr" id="phCtr">0 / 10장</div>
@@ -2857,14 +2518,14 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
     <div class="wsep"></div>
     <div class="wsec">제목 Title</div>
-    <input id="listingTitle" class="winp" style="width:100%" placeholder="어떤 물건을 판매하시나요? What are you selling?"/>
+    <input id="listingTitle" class="winp" placeholder="어떤 물건을 판매하시나요? What are you selling?"/>
     <div class="wsec">가격 Price</div>
-    <div class="wrow"><input id="listingPrice" class="winp" style="width:100%" placeholder="$ 금액 Amount" type="number"/><input class="winp" id="freeT" placeholder="무료 나눔?" readonly style="cursor:pointer;color:var(--green);font-weight:500;flex:.65" onclick="this.value=this.value?'':' 무료 Free'"/></div>
+    <div class="wrow"><input id="listingPrice" class="winp" placeholder="$ 금액 Amount" type="number"/><input class="winp" id="freeT" placeholder="무료 나눔?" readonly style="cursor:pointer;color:var(--green);font-weight:500;flex:.65" onclick="this.value=this.value?'':' 무료 Free'"/></div>
     <div class="wsec">상세 설명 Description</div>
     <textarea id="listingDesc" class="wta" placeholder="상품 상태, 구매 시기, 직거래 희망 장소 등&#10;Condition, purchase date, meet-up location..."></textarea>
     <div class="wsec">거래 지역 Location</div>
     <div class="wloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>얼바인 노스우드 &#183; Verified &#10003;</span></div>
-    <button class="wsub" onclick="submitListing()">등록하기 Post Listing</button>
+    <button class="wsub">등록하기 Post Listing</button>
     <div style="height:24px"></div>
   </div>
 </div>
@@ -2935,71 +2596,14 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
   <div style="flex:1;overflow-y:auto;scrollbar-width:none;background:var(--cream)">
     <div class="sech"><div class="secht">이 동네 수다방<small>&#183; 노스우드</small></div><div class="secha" onclick="showSc('home');switchMainById('p-comm')">더 보기</div></div>
-    <div class="comm-card" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer"><div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div><div class="cc-title">얼바인 스펙트럼 주차 너무 힘들죠? 😅</div><div class="cc-prev">토요일 저녁 B2가 5시에 이미 만차... 보통 어느 층 세워요?</div><div class="cc-foot"><div class="cc-av">M</div><span class="cc-author">박민지</span></div></div>
+    <div class="comm-card"><div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div><div class="cc-title">얼바인 스펙트럼 주차 너무 힘들죠? 😅</div><div class="cc-prev">토요일 저녁 B2가 5시에 이미 만차... 보통 어느 층 세워요?</div><div class="cc-foot"><div class="cc-av">M</div><span class="cc-author">박민지</span></div></div>
     <div class="sech" style="padding-top:8px"><div class="secht">이 동네 모임<small>&#183; 노스우드</small></div><div class="secha" onclick="showSc('home');switchMainById('p-comm')">더 보기</div></div>
-    <div class="meetcard" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer"><div class="mc-top"><div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div><div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park</div></div></div><div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명</span><button class="mc-join">참가</button></div></div>
+    <div class="meetcard"><div class="mc-top"><div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div><div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park</div></div></div><div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명</span><button class="mc-join">참가</button></div></div>
     <div style="height:80px"></div>
   </div>
 </div>
 
 
-
-<!-- ══ 매물 수정 ══ -->
-<div class="sc" id="sc-editlisting">
-  <div class="sbar">
-    <button class="back-btn" onclick="showSc('mylistings')">
-      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-    </button>
-    <span class="sbar-t">매물 수정 Edit Listing</span>
-    <button onclick="saveEditListing()" style="background:none;border:none;color:var(--or);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">저장</button>
-  </div>
-  <div style="flex:1;overflow-y:auto;padding:16px">
-
-    <!-- 사진 -->
-    <div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">사진 수정 Photos</div>
-      <div id="editPhotoPreview" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
-      <label for="editPhotoFile" style="display:inline-block;padding:8px 14px;border:1.5px dashed var(--line);border-radius:8px;background:var(--ivory);color:var(--muted);font-size:12px;cursor:pointer">+ 사진 추가</label>
-      <input type="file" id="editPhotoFile" accept="image/*" style="display:none" onchange="addEditPhoto(this)">
-    </div>
-
-    <!-- 제목 -->
-    <div style="margin-bottom:12px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">제목 Title *</div>
-      <input id="editTitle" class="winp" style="width:100%" placeholder="제목을 입력하세요">
-    </div>
-
-    <!-- 가격 -->
-    <div style="margin-bottom:12px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">가격 Price</div>
-      <input id="editPrice" class="winp" type="number" style="width:100%" placeholder="$ 금액 (무료 나눔은 0)">
-    </div>
-
-    <!-- 설명 -->
-    <div style="margin-bottom:12px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">설명 Description</div>
-      <textarea id="editDesc" class="wta" style="width:100%;min-height:120px" placeholder="상품 상태, 구매 시기, 직거래 희망 장소 등"></textarea>
-    </div>
-
-    <!-- 상태 변경 -->
-    <div style="margin-bottom:20px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">판매 상태 Status</div>
-      <div style="display:flex;gap:8px">
-        <button onclick="selectEditStatus(this,'active')" id="editStatus_active" style="flex:1;padding:10px;border:1.5px solid var(--or);border-radius:8px;background:var(--or-bg);color:var(--or);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">판매중</button>
-        <button onclick="selectEditStatus(this,'reserved')" id="editStatus_reserved" style="flex:1;padding:10px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">예약중</button>
-        <button onclick="selectEditStatus(this,'sold')" id="editStatus_sold" style="flex:1;padding:10px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">판매완료</button>
-      </div>
-    </div>
-
-    <!-- 저장 버튼 -->
-    <button onclick="saveEditListing()" style="width:100%;padding:14px;background:var(--or);border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px">
-      수정 완료 Save Changes
-    </button>
-    <button onclick="showSc('mylistings')" style="width:100%;padding:12px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--muted);font-size:14px;cursor:pointer;font-family:inherit">
-      취소 Cancel
-    </button>
-  </div>
-</div>
 <!-- ══ 채팅 목록 ══ -->
 <div class="sc" id="sc-chatlist">
   <div class="sbar">
@@ -3062,6 +2666,85 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
   </div>
 </div>
+
+<!-- ══ 채팅 목록 ══ -->
+<div class="sc" id="sc-chatlist">
+  <div class="sbar">
+    <button class="back-btn" onclick="showSc('home');setNav('home')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <span class="sbar-t">채팅 목록</span><span></span>
+  </div>
+  <div id="chatListContainer" style="flex:1;overflow-y:auto;background:var(--cream)">
+    <div style="text-align:center;padding:60px;color:var(--muted)">로딩 중...</div>
+  </div>
+</div>
+
+<!-- ══ 내 매물 ══ -->
+<div class="sc" id="sc-mylistings">
+  <div class="sbar">
+    <button class="back-btn" onclick="showSc('profile')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <span class="sbar-t">내 매물</span>
+    <button onclick="showSc('write')" style="background:none;border:none;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ 등록</button>
+  </div>
+  <div id="myListings" style="flex:1;overflow-y:auto;background:var(--cream)">
+    <div style="text-align:center;padding:60px;color:var(--muted)">로딩 중...</div>
+  </div>
+</div>
+
+<!-- ══ 유저 프로필 ══ -->
+<div class="sc" id="sc-userprofile">
+  <div class="sbar">
+    <button class="back-btn" onclick="showSc('detail')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <span class="sbar-t" id="userProfileName">이웃 프로필</span>
+    <button onclick="reportContent('user',window._viewingUser?.uid,'부적절한 사용자')" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit">신고</button>
+  </div>
+  <div style="flex:1;overflow-y:auto;background:var(--cream)">
+    <div style="background:var(--ink);padding:24px 20px;display:flex;align-items:center;gap:14px">
+      <div id="userProfileAvatar" style="width:56px;height:56px;border-radius:50%;background:var(--or);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff;flex-shrink:0">M</div>
+      <div>
+        <div id="userProfileNickname" style="font-size:18px;font-weight:800;color:#fff;margin-bottom:4px">이웃</div>
+        <div id="userProfileArea" style="font-size:12px;color:rgba(255,255,255,.6)">OC</div>
+        <div id="userProfileScore" style="font-size:11px;color:var(--or);margin-top:3px">바이브 점수 0</div>
+      </div>
+    </div>
+    <div style="padding:14px 16px;font-size:13px;font-weight:700;color:#3E2510;border-bottom:1px solid var(--line);background:#fff">판매 중인 매물</div>
+    <div id="userListings" style="background:var(--cream)"><div style="text-align:center;padding:30px;color:var(--muted)">로딩 중...</div></div>
+    <div style="padding:14px 16px;font-size:13px;font-weight:700;color:#3E2510;border-bottom:1px solid var(--line);background:#fff;margin-top:8px">이웃 후기</div>
+    <div id="userReviews" style="background:#fff"><div style="text-align:center;padding:30px;color:var(--muted)">로딩 중...</div></div>
+  </div>
+</div>
+
+<!-- ══ 매물 수정 ══ -->
+<div class="sc" id="sc-editlisting">
+  <div class="sbar">
+    <button class="back-btn" onclick="showSc('mylistings')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <span class="sbar-t">매물 수정</span>
+    <button onclick="saveEditListing()" style="background:none;border:none;color:var(--or);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">저장</button>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:16px">
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">제목 *</div>
+      <input id="editTitle" class="winp" style="width:100%" placeholder="제목">
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">가격</div>
+      <input id="editPrice" class="winp" type="number" style="width:100%" placeholder="$ 금액">
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">설명</div>
+      <textarea id="editDesc" class="wta" style="width:100%;min-height:100px" placeholder="상품 설명"></textarea>
+    </div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">판매 상태</div>
+      <div style="display:flex;gap:8px">
+        <button id="editStatus_active" onclick="selectEditStatus(this,'active')" style="flex:1;padding:10px;border:1.5px solid var(--or);border-radius:8px;background:var(--or-bg);color:var(--or);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">판매중</button>
+        <button id="editStatus_reserved" onclick="selectEditStatus(this,'reserved')" style="flex:1;padding:10px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">예약중</button>
+        <button id="editStatus_sold" onclick="selectEditStatus(this,'sold')" style="flex:1;padding:10px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">판매완료</button>
+      </div>
+    </div>
+    <button onclick="saveEditListing()" style="width:100%;padding:14px;background:var(--or);border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">수정 완료</button>
+  </div>
+</div>
+
 <!-- ══ 알림설정 ══ -->
 <div class="sc" id="sc-notif">
   <div class="dhead">
@@ -3147,7 +2830,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     <div class="pmenu">
       <div class="pmi" onclick="showSc('mylistings');loadMyListings()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div><span class="pmi-t">나의 판매내역 My Listings</span><span class="pmi-cnt">3</span><span class="pmi-r">&#8250;</span></div>
       <div class="pmi" onclick="showPurchaseHistory()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><span class="pmi-t">나의 구매내역 Purchase History</span><span class="pmi-r">&#8250;</span></div>
-      <div class="pmi" onclick="showSavedListings()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><span class="pmi-t">관심 목록 Saved</span><span class="pmi-cnt">32</span><span class="pmi-r">&#8250;</span></div>
+      <div class="pmi"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><span class="pmi-t">관심 목록 Saved</span><span class="pmi-cnt">32</span><span class="pmi-r">&#8250;</span></div>
     </div>
     <div class="pmenu">
       <div class="pmi" onclick="openModal()"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><span class="pmi-t">동네 인증 Neighborhood Verify</span><span class="pmi-vb">Verified</span><span class="pmi-r" style="margin-left:6px">&#8250;</span></div>
@@ -3155,8 +2838,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       <div class="pmi" onclick="showSc('notif')"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><span class="pmi-t">알림 설정 Notifications</span><span class="pmi-r">&#8250;</span></div>
     </div>
     <div class="pmenu">
-      <div class="pmi"><div class="pmi-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg></div><span class="pmi-t">고객 지원 Support</span><span class="pmi-r">&#8250;</span></div>
-      <div class="pmi" onclick="window.open('https://orangemarket-kappa.vercel.app/terms','_blank')||alert('이용약관 준비 중입니다.')" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><span class="pmi-t">이용 약관 / 개인정보 Terms &amp; Privacy</span><span class="pmi-r">&#8250;</span></div>
+      <div class="pmi" onclick="alert('문의: orangemarket.oc@gmail.com')" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg></div><span class="pmi-t">고객 지원 Support</span><span class="pmi-r">&#8250;</span></div>
+      <div class="pmi"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><span class="pmi-t">이용 약관 / 개인정보 Terms &amp; Privacy</span><span class="pmi-r">&#8250;</span></div>
     </div>
   </div>
   <div id="logoutSection" style="display:none" id="logoutSection" style="display:none;margin:4px 13px 20px">
@@ -3168,6 +2851,61 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 </div>
 
 <!-- ══ 스폰서 페이지 ══ -->
+<div class="sc" id="sc-ad-info">
+  <div class="sbar">
+    <button class="back-btn" onclick="showSc('home')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <span class="sbar-t">업체 광고 안내</span><span></span>
+  </div>
+  <div style="flex:1;overflow-y:auto;background:var(--cream)">
+    <div style="background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:28px 20px 24px;text-align:center">
+      <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:8px">🍊 오렌지마켓 업체 광고</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.65);line-height:1.7">OC 한인 이웃에게 직접 닿는<br>가장 효과적인 로컬 광고</div>
+    </div>
+    <div style="padding:12px 13px 80px">
+
+      <div style="background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div><div style="font-size:16px;font-weight:800;color:#3E2510">무료 Free</div><div style="font-size:11px;color:var(--muted)">일단 시작해보세요</div></div>
+          <div style="font-size:22px;font-weight:800;color:var(--green)">$0</div>
+        </div>
+        <div style="font-size:12px;color:var(--mid);line-height:1.9">✓ 업체 프로필 &nbsp;✓ 사진 3장<br>✓ 업체·맛집 탭 기본 노출<br><span style="color:var(--muted)">— 이웃맵 없음 &nbsp;— 쿠폰 없음</span></div>
+        <button onclick="showSc('biz-write')" style="width:100%;margin-top:12px;padding:11px;background:#fff;border:1.5px solid var(--line);border-radius:10px;color:#3E2510;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">무료로 시작하기</button>
+      </div>
+
+      <div style="background:linear-gradient(135deg,#FFFBF8,#FFF3EC);border:1.5px solid var(--or-bd);border-radius:14px;padding:16px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div><div style="font-size:16px;font-weight:800;color:#3E2510">반짝 ⚡</div><div style="font-size:11px;color:var(--muted)">단기 집중 노출</div></div>
+          <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:var(--or)">$19.99</div><div style="font-size:11px;color:var(--muted)">/2주</div></div>
+        </div>
+        <div style="font-size:12px;color:var(--mid);line-height:1.9">✓ 목록 최상단 고정<br>✓ 사진 10장 &nbsp;✓ 쿠폰 1개 &nbsp;✓ 이웃맵 기본 핀<br><span style="color:var(--muted)">— 홈 배너 없음 &nbsp;— 오렌지픽 없음</span></div>
+        <button style="width:100%;margin-top:12px;padding:11px;background:var(--or-bg);border:1.5px solid var(--or-bd);border-radius:10px;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">반짝 시작 — $19.99</button>
+      </div>
+
+      <div style="background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div><div style="font-size:16px;font-weight:800;color:#3E2510">베이직 Basic</div><div style="font-size:11px;color:var(--muted)">배너 + 오렌지픽</div></div>
+          <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:var(--or)">$29.99</div><div style="font-size:11px;color:var(--muted)">/월</div></div>
+        </div>
+        <div style="font-size:12px;color:var(--mid);line-height:1.9">✓ 반짝 혜택 포함<br>✓ 홈 배너 로테이션 &nbsp;✓ 오렌지픽 🍊<br>✓ 이웃맵 강조 핀 &nbsp;✓ 쿠폰 2개</div>
+        <button style="width:100%;margin-top:12px;padding:11px;background:var(--or-bg);border:1.5px solid var(--or-bd);border-radius:10px;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">베이직 시작 — $29.99</button>
+      </div>
+
+      <div style="background:#fff;border:2px solid var(--or);border-radius:14px;padding:16px;margin-bottom:10px;position:relative;overflow:hidden">
+        <div style="position:absolute;top:0;right:0;background:var(--or);color:#fff;font-size:10px;font-weight:700;padding:4px 12px;border-radius:0 14px 0 10px">인기</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div><div style="font-size:16px;font-weight:800;color:#3E2510">프로 Pro</div><div style="font-size:11px;color:var(--muted)">푸시알림 + 우선 배너</div></div>
+          <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:var(--or)">$59.99</div><div style="font-size:11px;color:var(--muted)">/월</div></div>
+        </div>
+        <div style="font-size:12px;color:var(--mid);line-height:1.9">✓ 베이직 혜택 포함<br>✓ 배너 우선 로테이션<br>✓ 푸시알림 월 4회 (반경 이웃 타겟)<br>✓ 이웃맵 프리미엄 핀 &nbsp;✓ 쿠폰 5개<br>✓ 월간 노출·클릭 리포트</div>
+        <button style="width:100%;margin-top:12px;padding:11px;background:var(--or);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">프로 시작 — $59.99</button>
+      </div>
+
+      
+
+    </div>
+  </div>
+</div>
+
 <div class="sc" id="sc-sponsor">
   <div class="dhead">
     <button class="bk" onclick="showSc('home')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
@@ -3227,11 +2965,6 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 </div>
 </div>
 <script>
-function openDemoDetail() {
-  // 데모 매물 클릭 - Firebase에서 실제 매물을 불러옵니다
-  showSc('detail');
-}
-
 var HIDENAV=['sc-detail','sc-chat','sc-write','sc-sponsor','sc-review','sc-search','sc-notif','sc-job-write','sc-lesson-write','sc-biz-write','sc-funding','sc-auth','sc-payment','sc-payment-success','sc-ad-info','sc-chatlist','sc-mylistings','sc-userprofile','sc-editlisting'];
 var boostOpen=false,boostCnt=0,boostMax=5,curPrice=1200;
 var orgScores=[0,0,0,0,0];
@@ -3292,7 +3025,7 @@ function doBoost(){
   }
   curPrice=newP;
   document.getElementById('dPrice').textContent='$'+newP.toLocaleString();
-  var _cp=document.getElementById('chatPrice'); if(_cp) _cp.textContent='$'+newP.toLocaleString();
+  var _cp=document.getElementById('chatPrice');if(_cp)_cp.textContent='$'+newP.toLocaleString();
   document.getElementById('boostEd').style.display='none';
   boostOpen=false;
   var btn=document.getElementById('boostBtn');
@@ -3302,8 +3035,9 @@ function doBoost(){
 
 /* CHAT */
 function sendMsg(){
-  // Firebase 버전이 로드됐으면 그것 사용
-  if(window._fbSendMsg){ window._fbSendMsg(); return; }
+  // Firebase 로그인된 경우만 Firebase 버전 사용
+  var cu = window._currentUser||(window._auth&&window._auth.currentUser);
+  if(window._fbSendMsg && cu){ window._fbSendMsg(); return; }
   var inp=document.getElementById('msgInp');
   var txt=inp.value.trim();if(!txt)return;
   var list=document.getElementById('msgList');
@@ -3314,7 +3048,20 @@ function sendMsg(){
 document.getElementById('msgInp').addEventListener('keydown',function(e){if(e.key==='Enter')sendMsg();});
 
 /* PHOTOS */
-
+var photoCnt=0;
+function addPhoto(btn){
+  if(photoCnt>=10)return;photoCnt++;
+  btn.classList.add('filled');
+  var ic=btn.querySelector('svg');if(ic)ic.style.opacity='.4';
+  var sp=btn.querySelector('span');if(sp)sp.textContent=photoCnt;
+  var g=document.getElementById('pgrid');
+  if(photoCnt<10){
+    var nb=document.createElement('div');nb.className='phbox';
+    nb.innerHTML='<svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;margin-bottom:3px"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>추가</span>';
+    nb.onclick=function(){addPhoto(this);};g.appendChild(nb);
+  }
+  document.getElementById('phCtr').textContent=photoCnt+' / 10장';
+}
 
 /* REVIEW - vibe */
 function calcDangdo(){
@@ -3530,14 +3277,9 @@ function completeSignup(){
 }
 function goProfile(){showSc('profile');setNav('profile');}
 function checkAndGoProfile(){
-  var u = window._currentUser
-       || (window._auth && window._auth.currentUser);
-  if(u){
-    window._currentUser = u;
-    showSc('profile'); setNav('profile');
-  } else {
-    showSc('auth'); setNav('profile');
-  }
+  var u=window._currentUser||(window._auth&&window._auth.currentUser);
+  if(u){ window._currentUser=u; showSc('profile'); setNav('profile'); }
+  else  { showSc('auth'); setNav('profile'); }
 }
 window.checkAndGoProfile = checkAndGoProfile;
 function openModal(){document.getElementById('modalBg').classList.add('open');}
