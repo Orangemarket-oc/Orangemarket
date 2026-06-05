@@ -685,7 +685,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       _updateUI(false);
     }
     // 매물 로드
-    loadListings();
+    loadListings().catch(e => console.log('매물 로드 오류:', e.message));
   });
 
   function _updateUI(loggedIn) {
@@ -789,14 +789,14 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
   window.completeSignup = async function() {
     const inputs = document.querySelectorAll('#profileSetup input[type="text"]');
-    const nickname = (inputs[1]?.value || inputs[0]?.value || '').trim();
-    const realName  = (inputs[0]?.value || '').trim();
+    const nickname = ((inputs[1] && inputs[1].value) || (inputs[0] && inputs[0].value) || '').trim();
+    const realName  = ((inputs[0] && inputs[0].value) || '').trim();
     if (!nickname) { alert('닉네임을 입력해주세요.'); return; }
-    const uid = window._newUid || auth.currentUser?.uid;
+    const uid = window._newUid || auth.currentUser && auth.currentUser.uid;
     if (!uid) { alert('다시 로그인해주세요.'); return; }
     const profile = {
       uid, nickname, realName,
-      phone: auth.currentUser?.phoneNumber||'',
+      phone: auth.currentUser && auth.currentUser.phoneNumber || ''||'',
       verified:false, vibeScore:0, totalTrades:0,
       reportCount:0, createdAt:serverTimestamp()
     };
@@ -836,10 +836,10 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
           `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
         );
         const geoData = await geoRes.json();
-        zipCode      = geoData.address?.postcode?.slice(0,5) || '';
+        zipCode      = (geoData.address && geoData.address.postcode && geoData.address.postcode.slice(0,5)) || '';
         neighborhood = ZIP_NEIGHBORHOODS[zipCode]
-                    || geoData.address?.city
-                    || geoData.address?.town
+                    || (geoData.address && geoData.address.city)
+                    || (geoData.address && geoData.address.town)
                     || 'OC 이웃';
       } catch(e) {
         console.log('주소 변환 오류:', e.message);
@@ -885,17 +885,17 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     const cu = window._currentUser || (window._auth && window._auth.currentUser);
     if (!cu) { alert('로그인이 필요해요.\n프로필 탭 → 로그인/회원가입'); showSc('auth'); return; }
     window._currentUser = cu;
-    if (!window._userProfile?.verified) {
+    if (!(window._userProfile && window._userProfile.verified)) {
       alert('동네 GPS 인증 후 등록 가능해요.\n프로필 탭 → 동네 인증'); openModal(); return;
     }
     const titleEl = document.getElementById('listingTitle');
     const priceEl = document.getElementById('listingPrice');
     const descEl  = document.getElementById('listingDesc');
-    const title = (titleEl?.value||'').trim();
-    const price = (priceEl?.value||'0');
-    const desc  = (descEl?.value||'').trim();
-    const cat   = document.querySelector('#sc-write .catc.on')?.textContent?.trim() || '기타';
-    if (!title) { alert('제목을 입력해주세요.'); titleEl?.focus(); return; }
+    const title = ((titleEl && titleEl.value)||'').trim();
+    const price = ((priceEl && priceEl.value)||'0');
+    const desc  = ((descEl && descEl.value)||'').trim();
+    const cat   = document.querySelector('#sc-write .catc.on') && document.querySelector('#sc-write .catc.on').textContent.trim() || '기타';
+    if (!title) { alert('제목을 입력해주세요.'); if(titleEl) titleEl.focus(); return;
 
     // 사진 (base64 최대 3장)
     const photos = window._pendingPhotos || [];
@@ -928,24 +928,45 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   // 사진 추가 (base64로 Firestore 저장 - Storage 없이)
   window.addPhotoFirebase = function(input) {
     if (!input.files || !input.files[0]) return;
-    const file = input.files[0];
-    if (file.size > 500000) { alert('사진이 너무 커요. 500KB 이하로 올려주세요.'); return; }
+    if (!window._pendingPhotos) window._pendingPhotos = [];
+    if (window._pendingPhotos.length >= 5) { alert('사진은 최대 5장이에요.'); return; }
     const reader = new FileReader();
     reader.onload = (e) => {
-      if (!window._pendingPhotos) window._pendingPhotos = [];
-      if (window._pendingPhotos.length >= 3) { alert('사진은 최대 3장이에요.'); return; }
-      window._pendingPhotos.push(e.target.result);
-      // 미리보기 추가
-      const preview = document.getElementById('photoPreview');
-      if (preview) {
-        const img = document.createElement('img');
-        img.src = e.target.result;
-        img.style.cssText='width:70px;height:70px;object-fit:cover;border-radius:8px;margin:4px';
-        preview.appendChild(img);
-      }
-      alert(`사진 ${window._pendingPhotos.length}장 추가됨`);
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 600;
+        let w = img.width, h = img.height;
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+        w = Math.max(w, 1); h = Math.max(h, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const data = canvas.toDataURL('image/jpeg', 0.65);
+        window._pendingPhotos.push(data);
+        const preview = document.getElementById('photoPreview');
+        if (!preview) return;
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;display:inline-block;margin:4px';
+        const thumb = document.createElement('img');
+        thumb.src = data;
+        thumb.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;display:block';
+        const del = document.createElement('button');
+        del.textContent = '×';
+        del.style.cssText = 'position:absolute;top:-5px;right:-5px;width:20px;height:20px;border-radius:50%;background:#C0392B;color:#fff;border:none;font-size:14px;cursor:pointer;line-height:1;text-align:center;padding:0';
+        del.onclick = () => {
+          const idx = Array.from(preview.children).indexOf(wrap);
+          window._pendingPhotos.splice(idx, 1);
+          wrap.remove();
+        };
+        wrap.appendChild(thumb);
+        wrap.appendChild(del);
+        preview.appendChild(wrap);
+      };
+      img.src = e.target.result;
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(input.files[0]);
+    input.value = '';
   };
 
   window.loadListings = async function() {
@@ -958,7 +979,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         .sort((a,b)=>{
           if(a.isBoost&&!b.isBoost) return -1;
           if(!a.isBoost&&b.isBoost) return 1;
-          return (b.createdAt?.seconds||0)-(a.createdAt?.seconds||0);
+          return ((b.createdAt && b.createdAt.seconds)||0)-((a.createdAt && a.createdAt.seconds)||0);
         });
       _renderListings(list);
     } catch(e) { console.log('매물 로드:', e.message); }
@@ -972,7 +993,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       const el = document.createElement('div');
       el.className='card rc';
       el.style.cssText='display:flex;gap:12px;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);cursor:pointer';
-      const thumb = l.images?.[0]
+      const thumb = (l.images && l.images[0])
         ? `<img src="${l.images[0]}" style="width:90px;height:90px;border-radius:10px;object-fit:cover;flex-shrink:0">`
         : `<div style="width:90px;height:90px;border-radius:10px;background:var(--ivory);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:28px">📦</div>`;
       el.innerHTML = thumb
@@ -992,7 +1013,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     const d = document.getElementById('detailDesc');
     const n = document.getElementById('detailNeighborhood');
     if (t) t.textContent = l.title;
-    if (p) p.textContent = l.isFree ? '무료 나눔' : '$'+l.price?.toLocaleString();
+    if (p) p.textContent = l.isFree ? '무료 나눔' : '$'+l.price && l.price.toLocaleString();
     if (d) d.textContent = l.description || '';
     if (n) n.textContent = l.neighborhood || '';
     // 조회수 증가
@@ -1004,10 +1025,10 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     if (!window._currentUser) return;
     try {
       const q = query(collection(db,'listings'),
-        where('userId','==',window._currentUser.uid),
-        orderBy('createdAt','desc'));
-      const snap = await getDocs(q);
-      const list = snap.docs.map(d=>({id:d.id,...d.data()}));
+        where('userId','==',cu.uid), limit(30));
+      const snap = await getDocs(q).catch(()=>({docs:[]}));
+      const list = snap.docs.map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>((b.createdAt && b.createdAt.seconds)||0)-((a.createdAt && a.createdAt.seconds)||0));
       const container = document.getElementById('myListings');
       if (!container) return;
       container.innerHTML = '';
@@ -1021,7 +1042,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         el.innerHTML=`
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.title}</div>
-            <div style="font-size:12px;color:var(--muted)">${l.isFree?'무료':'$'+l.price?.toLocaleString()} · ${l.status==='active'?'판매중':l.status==='reserved'?'예약중':'판매완료'}</div>
+            <div style="font-size:12px;color:var(--muted)">${l.isFree?'무료':'$'+l.price && l.price.toLocaleString()} · ${l.status==='active'?'판매중':l.status==='reserved'?'예약중':'판매완료'}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button onclick="deleteListing('${l.id}')" style="padding:6px 10px;border:1px solid #F5C6C2;border-radius:6px;background:#FDF0EE;color:#C0392B;font-size:11px;cursor:pointer;font-family:inherit">삭제</button>
@@ -1052,27 +1073,58 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   window.startChat = async function() {
     const l = window._selectedListing;
     if (!l) {
-      alert('매물을 먼저 선택해주세요. 홈에서 매물을 클릭하세요.');
+      alert('매물을 먼저 선택해주세요.');
       showSc('home'); setNav('home'); return;
     }
-    if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); return; }
-    if (l.userId===window._currentUser.uid) { alert('내 매물이에요.'); return; }
-    const chatId = [window._currentUser.uid, l.userId, l.id].sort().join('_');
-    const snap = await getDoc(doc(db,'chats',chatId));
-    if (!snap.exists()) {
-      await setDoc(doc(db,'chats',chatId), {
-        listingId:l.id, listingTitle:l.title, listingPrice:l.price||0,
-        listingImage:l.images?.[0]||'',
-        buyerId:window._currentUser.uid, sellerId:l.userId,
-        buyerNickname:window._userProfile?.nickname||'구매자',
-        sellerNickname:l.sellerNickname||'판매자',
-        status:'active', lastMessage:'', unreadCount:0,
-        lastMessageAt:serverTimestamp(), createdAt:serverTimestamp(),
-      });
+    const cu = window._currentUser || (window._auth && window._auth.currentUser);
+    if (!cu) {
+      alert('로그인 후 채팅할 수 있어요.\n프로필 탭에서 로그인해주세요.');
+      showSc('auth'); return;
     }
-    window._activeChatId = chatId;
-    showSc('chat');
-    window._loadMessages(chatId);
+    window._currentUser = cu;
+    if (l.userId === cu.uid) { alert('내 매물이에요.'); return; }
+    if (l.id && l.id.startsWith('demo_')) {
+      alert('데모 매물이에요.\n실제 매물을 클릭해서 채팅해보세요.'); return;
+    }
+    try {
+      const chatId = [cu.uid, l.userId, l.id].sort().join('_');
+      const snap = await getDoc(doc(db, 'chats', chatId));
+      if (!snap.exists()) {
+        await setDoc(doc(db, 'chats', chatId), {
+          listingId:       l.id,
+          listingTitle:    l.title,
+          listingPrice:    l.price || 0,
+          listingImage:    (l.images && l.images[0]) || '',
+          buyerId:         cu.uid,
+          sellerId:        l.userId,
+          buyerNickname:   window._userProfile&&window._userProfile.nickname || '구매자',
+          sellerNickname:  l.sellerNickname || '판매자',
+          status:          'active',
+          lastMessage:     '',
+          unreadCount:     0,
+          lastMessageAt:   serverTimestamp(),
+          createdAt:       serverTimestamp(),
+        });
+      }
+      // 채팅 헤더 업데이트
+      const cpn = document.querySelector('#sc-chat .cpn');
+      const cpt = document.querySelector('#sc-chat .cpt');
+      if (cpn) cpn.textContent = l.sellerNickname || '판매자';
+      if (cpt) cpt.textContent = l.title || '';
+      // 이전 데모 메시지 숨기기
+      const msgList = document.getElementById('msgList');
+      if (msgList) {
+        msgList.querySelectorAll('.msg').forEach(function(m) {
+          if (!m.id || !m.id.startsWith('m-')) m.style.display = 'none';
+        });
+      }
+      window._activeChatId = chatId;
+      showSc('chat');
+      setTimeout(function() { window._loadMessages(chatId); }, 100);
+    } catch(e) {
+      console.error('채팅 시작 오류:', e.message);
+      alert('채팅을 시작할 수 없어요.\n' + (e.message || '잠시 후 다시 시도해주세요.'));
+    }
   };
 
   window._loadMessages = function(chatId) {
@@ -1086,7 +1138,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
           if (ch.type!=='added') return;
           if (document.getElementById('m-'+ch.doc.id)) return;
           const msg = ch.doc.data();
-          const isMe = msg.senderId===window._currentUser?.uid;
+          const isMe = msg.senderId===(window._currentUser && window._currentUser.uid);
           const el = document.createElement('div');
           el.id='m-'+ch.doc.id;
           el.className='msg '+(isMe?'me':'them');
@@ -1100,11 +1152,11 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
   window.sendMsg = window._fbSendMsg = async function() {
     const inp = document.getElementById('msgInp');
-    if (!inp?.value.trim()||!window._activeChatId||!window._currentUser) return;
+    if (!(inp && inp.value.trim())||!window._activeChatId||!window._currentUser) return;
     const text=inp.value.trim(); inp.value='';
     await addDoc(collection(db,'chats',window._activeChatId,'messages'),
       {senderId:window._currentUser.uid,
-       senderNickname:window._userProfile?.nickname||'이웃',
+       senderNickname:window._userProfile&&window._userProfile.nickname||'이웃',
        text, createdAt:serverTimestamp()});
     await updateDoc(doc(db,'chats',window._activeChatId),
       {lastMessage:text, lastMessageAt:serverTimestamp()});
@@ -1116,16 +1168,16 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     const container = document.getElementById('chatListContainer');
     if (!container) return;
     try {
+      const cu3 = window._currentUser||(window._auth&&window._auth.currentUser);
+      if (!cu3) { container.innerHTML='<div style="text-align:center;padding:40px;color:var(--muted)">로그인이 필요해요</div>'; return; }
       const buyerQ = query(collection(db,'chats'),
-        where('buyerId','==',window._currentUser.uid),
-        orderBy('lastMessageAt','desc'), limit(20));
+        where('buyerId','==',cu3.uid), limit(20));
       const sellerQ = query(collection(db,'chats'),
-        where('sellerId','==',window._currentUser.uid),
-        orderBy('lastMessageAt','desc'), limit(20));
+        where('sellerId','==',cu3.uid), limit(20));
       const [buyerSnap,sellerSnap] = await Promise.all([getDocs(buyerQ),getDocs(sellerQ)]);
       const all = [...buyerSnap.docs,...sellerSnap.docs]
         .map(d=>({id:d.id,...d.data()}))
-        .sort((a,b)=>b.lastMessageAt?.seconds-a.lastMessageAt?.seconds);
+        .sort((a,b)=>(b.lastMessageAt && b.lastMessageAt.seconds)-(a.lastMessageAt && a.lastMessageAt.seconds));
       container.innerHTML='';
       if (all.length===0) {
         container.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">💬</div><div style="font-size:15px;font-weight:700;color:var(--mid);margin-bottom:6px">진행중인 채팅이 없어요</div></div>';
@@ -1161,7 +1213,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   // ════════════════════════════════════════════════════════
   window.searchListings = async function() {
     const inp = document.getElementById('searchInp');
-    const kw = inp?.value?.trim().toLowerCase();
+    const kw = (inp && inp.value && inp.value.trim()).toLowerCase();
     if (!kw) { alert('검색어를 입력해주세요.'); return; }
     try {
       const q = query(collection(db,'listings'),
@@ -1170,7 +1222,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       const snap = await getDocs(q);
       const results = snap.docs
         .map(d=>({id:d.id,...d.data()}))
-        .filter(l => l.title?.toLowerCase().includes(kw)||l.description?.toLowerCase().includes(kw));
+        .filter(l => (l.title && l.title.toLowerCase()).includes(kw)||(l.description && l.description.toLowerCase()).includes(kw));
       const container = document.getElementById('searchResults');
       if (!container) return;
       container.innerHTML='';
@@ -1221,12 +1273,12 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   window.submitReview = async function() {
     if (!window._currentUser || !window._selectedListing) return;
     const score = window._reviewScore || 5;
-    const comment = document.querySelector('#sc-review textarea')?.value||'';
+    const comment = document.querySelector('#sc-review textarea') && document.querySelector('#sc-review textarea').value||'';
     const targetId = window._selectedListing.userId;
     try {
       await addDoc(collection(db,'reviews'), {
         reviewerId:   window._currentUser.uid,
-        reviewerNick: window._userProfile?.nickname||'이웃',
+        reviewerNick: window._userProfile&&window._userProfile.nickname||'이웃',
         targetId,
         listingId:    window._selectedListing.id,
         score,
@@ -1322,6 +1374,219 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       HIDENAV.push(HIDENAV_ADD);
     }
   });
+
+
+  // ════════════════════════════════════════════════════════
+  // 🛒 관심목록 / 구매내역 / 판매내역
+  // ════════════════════════════════════════════════════════
+
+  window.toggleSave = function(listingId) {
+    var cu2 = window._currentUser || (window._auth && window._auth.currentUser);
+    var key = 'om_saved_' + (cu2 ? cu2.uid : 'guest');
+    var saved = JSON.parse(localStorage.getItem(key) || '[]');
+    var idx = saved.indexOf(listingId);
+    var btn = document.getElementById('favBtn');
+    if (idx >= 0) {
+      saved.splice(idx, 1);
+      if (btn) btn.classList.remove('on');
+    } else {
+      saved.unshift(listingId);
+      if (btn) btn.classList.add('on');
+    }
+    localStorage.setItem(key, JSON.stringify(saved));
+  };
+
+  // 공통 바텀시트 (onclick 없이 addEventListener 사용)
+  function _showSheet(title, items) {
+    var old = document.getElementById('om_sheet');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'om_sheet';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:500;display:flex;flex-direction:column;justify-content:flex-end';
+
+    var bg = document.createElement('div');
+    bg.style.cssText = 'flex:1;background:rgba(0,0,0,.45)';
+    bg.addEventListener('click', function() { overlay.remove(); });
+
+    var panel = document.createElement('div');
+    panel.style.cssText = 'background:#fff;border-radius:22px 22px 0 0;max-height:80vh;display:flex;flex-direction:column';
+
+    var header = document.createElement('div');
+    header.style.cssText = 'padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-shrink:0';
+
+    var titleEl = document.createElement('span');
+    titleEl.style.cssText = 'font-size:16px;font-weight:800;color:#3E2510';
+    titleEl.textContent = title;
+
+    var btnWrap = document.createElement('div');
+    btnWrap.style.cssText = 'display:flex;gap:10px;align-items:center';
+
+    var homeBtn = document.createElement('button');
+    homeBtn.textContent = '홈';
+    homeBtn.style.cssText = 'background:none;border:1px solid var(--line);color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;padding:4px 8px;border-radius:6px';
+    homeBtn.addEventListener('click', function() { overlay.remove(); showSc('home'); setNav('home'); });
+
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = '×';
+    closeBtn.style.cssText = 'background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer;line-height:1';
+    closeBtn.addEventListener('click', function() { overlay.remove(); });
+
+    btnWrap.appendChild(homeBtn);
+    btnWrap.appendChild(closeBtn);
+    header.appendChild(titleEl);
+    header.appendChild(btnWrap);
+
+    var body = document.createElement('div');
+    body.id = 'om_sheet_body';
+    body.style.cssText = 'overflow-y:auto;flex:1';
+
+    var loading = document.createElement('div');
+    loading.style.cssText = 'text-align:center;padding:40px;color:var(--muted)';
+    loading.textContent = '로딩 중...';
+    body.appendChild(loading);
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    overlay.appendChild(bg);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    // 아이템 렌더링
+    Promise.resolve(items).then(function(rows) {
+      body.innerHTML = '';
+      if (!rows || rows.length === 0) {
+        var empty = document.createElement('div');
+        empty.style.cssText = 'text-align:center;padding:60px 20px;color:var(--muted)';
+        empty.innerHTML = '<div style="font-size:40px;margin-bottom:12px">📭</div><div style="font-size:14px;font-weight:700;color:var(--mid)">목록이 비어있어요</div>';
+        body.appendChild(empty);
+      } else {
+        rows.forEach(function(row) { body.appendChild(row); });
+      }
+    }).catch(function(e) {
+      body.textContent = '불러오기 실패: ' + e.message;
+    });
+  }
+
+  window.showSavedListings = async function() {
+    var cu2 = window._currentUser || (window._auth && window._auth.currentUser);
+    var key = 'om_saved_' + (cu2 ? cu2.uid : 'guest');
+    var saved = JSON.parse(localStorage.getItem(key) || '[]');
+
+    var itemsPromise = (async function() {
+      if (saved.length === 0) return [];
+      if (!window._listingStore) window._listingStore = {};
+      var items = [];
+      for (var i = 0; i < Math.min(saved.length, 15); i++) {
+        var id = saved[i];
+        var l = window._listingStore[id];
+        if (!l) {
+          try {
+            var snap = await getDoc(doc(db, 'listings', id));
+            if (snap.exists()) { l = {id:snap.id}; Object.assign(l, snap.data()); window._listingStore[id] = l; }
+          } catch(e) {}
+        }
+        if (l) items.push(l);
+      }
+      return items.map(function(l) {
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer;background:#fff';
+        var info = document.createElement('div');
+        info.style.cssText = 'flex:1';
+        info.innerHTML = '<div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:3px">'+l.title+'</div>'
+          +'<div style="font-size:13px;font-weight:700;color:var(--or)">'+(l.isFree?'무료 나눔':'$'+(l.price||0).toLocaleString())+'</div>'
+          +'<div style="font-size:11px;color:var(--muted)">'+(l.neighborhood||'OC')+'</div>';
+        var favBtn = document.createElement('button');
+        favBtn.textContent = '❤️';
+        favBtn.style.cssText = 'background:none;border:none;font-size:20px;cursor:pointer;align-self:center';
+        favBtn.addEventListener('click', function(e) { e.stopPropagation(); window.toggleSave(l.id); favBtn.textContent='🤍'; });
+        row.appendChild(info);
+        row.appendChild(favBtn);
+        row.addEventListener('click', function() {
+          window._selectedListing = l;
+          var sh = document.getElementById('om_sheet');
+          if (sh) sh.remove();
+          showSc('detail');
+        });
+        return row;
+      });
+    })();
+    _showSheet('관심 목록 ❤️', itemsPromise);
+  };
+
+  window.showPurchaseHistory = async function() {
+    var cu2 = window._currentUser || (window._auth && window._auth.currentUser);
+    if (!cu2) { alert('로그인이 필요해요.'); return; }
+    var itemsPromise = (async function() {
+      try {
+        var q = query(collection(db,'chats'), where('buyerId','==',cu2.uid), limit(30));
+        var snap = await getDocs(q).catch(function() { return {docs:[]}; });
+        var chats = snap.docs.map(function(d) { return Object.assign({id:d.id}, d.data()); })
+          .sort(function(a,b) { return ((b.lastMessageAt&&b.lastMessageAt.seconds)||0) - ((a.lastMessageAt&&a.lastMessageAt.seconds)||0); });
+        if (chats.length === 0) return [];
+        return chats.map(function(c) {
+          var date = (c.lastMessageAt && c.lastMessageAt.seconds) ? new Date(c.lastMessageAt.seconds*1000).toLocaleDateString('ko-KR') : '';
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);cursor:pointer;background:#fff';
+          var left = document.createElement('div');
+          left.style.cssText = 'flex:1';
+          left.innerHTML = '<div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:3px">'+(c.listingTitle||'매물')+'</div>'
+            +'<div style="font-size:12px;color:var(--muted)">판매자: '+(c.sellerNickname||'판매자')+'</div>'
+            +'<div style="font-size:11px;color:var(--muted);margin-top:2px">'+date+'</div>';
+          var right = document.createElement('div');
+          right.style.cssText = 'text-align:right;flex-shrink:0';
+          right.innerHTML = '<div style="font-size:13px;font-weight:700;color:var(--or)">$'+(c.listingPrice||0).toLocaleString()+'</div>'
+            +'<div style="font-size:11px;color:'+(c.status==='completed'?'var(--green)':'var(--muted)')+';margin-top:4px">'+(c.status==='completed'?'✅ 완료':'💬 진행중')+'</div>';
+          row.appendChild(left);
+          row.appendChild(right);
+          row.addEventListener('click', function() {
+            var sh = document.getElementById('om_sheet');
+            if (sh) sh.remove();
+            window._activeChatId = c.id;
+            showSc('chat');
+            if (window._loadMessages) window._loadMessages(c.id);
+          });
+          return row;
+        });
+      } catch(e) { return []; }
+    })();
+    _showSheet('나의 구매내역 🛍️', itemsPromise);
+  };
+
+  window.showSalesHistory = async function() {
+    var cu2 = window._currentUser || (window._auth && window._auth.currentUser);
+    if (!cu2) { alert('로그인이 필요해요.'); return; }
+    var itemsPromise = (async function() {
+      try {
+        var q = query(collection(db,'listings'), where('userId','==',cu2.uid), limit(30));
+        var snap = await getDocs(q).catch(function() { return {docs:[]}; });
+        var listings = snap.docs.map(function(d) { return Object.assign({id:d.id}, d.data()); })
+          .sort(function(a,b) { return ((b.createdAt&&b.createdAt.seconds)||0) - ((a.createdAt&&a.createdAt.seconds)||0); });
+        if (listings.length === 0) return [];
+        return listings.map(function(l) {
+          var date = (l.createdAt && l.createdAt.seconds) ? new Date(l.createdAt.seconds*1000).toLocaleDateString('ko-KR') : '';
+          var statusColor = l.status==='active'?'var(--green)':l.status==='reserved'?'var(--or)':'var(--muted)';
+          var statusText  = l.status==='active'?'판매중':l.status==='reserved'?'예약중':'판매완료';
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:#fff';
+          var left = document.createElement('div');
+          left.style.cssText = 'flex:1';
+          left.innerHTML = '<div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:3px">'+l.title+'</div>'
+            +'<div style="font-size:13px;font-weight:700;color:var(--or)">'+(l.isFree?'무료':'$'+(l.price||0).toLocaleString())+'</div>'
+            +'<div style="font-size:11px;color:var(--muted)">'+date+'</div>';
+          var badge = document.createElement('span');
+          badge.style.cssText = 'font-size:11px;font-weight:600;color:'+statusColor+';background:'+statusColor+'18;padding:3px 8px;border-radius:20px;align-self:center;flex-shrink:0';
+          badge.textContent = statusText;
+          row.appendChild(left);
+          row.appendChild(badge);
+          return row;
+        });
+      } catch(e) { return []; }
+    })();
+    _showSheet('나의 판매내역 📦', itemsPromise);
+  };
+
+ }
 
 </script>
 </head>
@@ -2674,7 +2939,12 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     <span class="sbar-t">채팅 목록</span><span></span>
   </div>
   <div id="chatListContainer" style="flex:1;overflow-y:auto;background:var(--cream)">
-    <div style="text-align:center;padding:60px;color:var(--muted)">로딩 중...</div>
+    <div style="text-align:center;padding:60px 20px;color:var(--muted)">
+      <div style="font-size:36px;margin-bottom:12px">💬</div>
+      <div style="font-size:14px;font-weight:700;color:var(--mid);margin-bottom:6px">채팅 목록이 없어요</div>
+      <div style="font-size:12px;margin-bottom:20px">매물에서 채팅으로 문의해보세요</div>
+      <button onclick="showSc('home');setNav('home')" style="padding:10px 20px;background:var(--or);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">홈으로</button>
+    </div>
   </div>
 </div>
 
@@ -2745,6 +3015,94 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   </div>
 </div>
 
+
+<!-- ══ 이용약관 ══ -->
+<div class="sc" id="sc-terms">
+  <div class="sbar">
+    <button class="back-btn" onclick="showSc('profile')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <span class="sbar-t">이용약관 / 개인정보</span><span></span>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:20px 16px;background:var(--cream)">
+    <div style="background:#fff;border-radius:14px;padding:18px;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:800;color:#3E2510;margin-bottom:10px">서비스 이용약관</div>
+      <div style="font-size:12px;color:var(--mid);line-height:1.8">
+        1. 오렌지마켓은 OC 한인 커뮤니티를 위한 로컬 마켓플레이스 서비스입니다.<br>
+        2. 이용자는 본인 명의의 전화번호로 가입해야 합니다.<br>
+        3. 허위 매물, 사기 거래, 욕설 등 부적절한 행위는 계정 정지 사유가 됩니다.<br>
+        4. 거래는 이용자 간 자율적으로 이루어지며 오렌지마켓은 거래를 보증하지 않습니다.<br>
+        5. 서비스 이용 중 발생한 분쟁은 당사자 간 해결을 원칙으로 합니다.<br>
+        6. 오렌지마켓은 사전 고지 없이 서비스를 변경하거나 종료할 수 있습니다.
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:14px;padding:18px;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:800;color:#3E2510;margin-bottom:10px">개인정보 처리방침</div>
+      <div style="font-size:12px;color:var(--mid);line-height:1.8">
+        <b>수집 항목:</b> 전화번호, 닉네임, 위치정보(동네 단위), 거래 내역<br>
+        <b>수집 목적:</b> 본인 인증, 동네 인증, 서비스 제공<br>
+        <b>보관 기간:</b> 회원 탈퇴 후 30일 이내 삭제<br>
+        <b>제3자 제공:</b> 법령에 따른 경우 외 제공하지 않습니다<br>
+        <b>위치정보:</b> 우편번호 기반 동네 이름만 저장 (정확한 좌표 미저장)<br><br>
+        California CCPA에 따라 개인정보 삭제를 요청할 권리가 있습니다.
+      </div>
+    </div>
+    <div style="text-align:center;padding:16px;font-size:11px;color:var(--muted)">
+      문의: orangemarket.oc@gmail.com<br>
+      © 2025 OrangeMarket OC. All rights reserved.
+    </div>
+  </div>
+</div>
+
+<!-- ══ 고객지원 ══ -->
+<div class="sc" id="sc-support">
+  <div class="sbar">
+    <button class="back-btn" onclick="showSc('profile')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <span class="sbar-t">고객 지원</span><span></span>
+  </div>
+  <div style="flex:1;overflow-y:auto;background:var(--cream)">
+    <!-- 연락처 -->
+    <div style="background:#fff;margin:12px 13px;border-radius:14px;overflow:hidden;border:1px solid var(--line)">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px;font-weight:700;color:#3E2510;margin-bottom:4px">📧 이메일 문의</div>
+        <div style="font-size:13px;color:var(--or)">orangemarket.oc@gmail.com</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">영업일 기준 24시간 내 답변</div>
+      </div>
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px;font-weight:700;color:#3E2510;margin-bottom:4px">💬 카카오톡 채널</div>
+        <div style="font-size:13px;color:var(--or)">@오렌지마켓OC</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">실시간 상담 가능</div>
+      </div>
+      <div style="padding:14px 16px">
+        <div style="font-size:13px;font-weight:700;color:#3E2510;margin-bottom:4px">⏰ 운영시간</div>
+        <div style="font-size:12px;color:var(--mid);line-height:1.7">월~금 10:00 – 18:00 (PT)<br>주말/공휴일 휴무</div>
+      </div>
+    </div>
+    <!-- FAQ -->
+    <div style="padding:14px 16px;font-size:13px;font-weight:700;color:#3E2510">자주 묻는 질문</div>
+    <div style="background:#fff;margin:0 13px;border-radius:14px;overflow:hidden;border:1px solid var(--line)">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:4px">Q. 동네 인증은 어떻게 하나요?</div>
+        <div style="font-size:12px;color:var(--mid);line-height:1.6">프로필 탭 → 동네 인증 → GPS로 인증하기를 누르면 자동으로 현재 위치 기반으로 동네가 설정돼요. Safari 설정에서 위치 접근을 허용해주세요.</div>
+      </div>
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:4px">Q. 사기 거래를 당했어요</div>
+        <div style="font-size:12px;color:var(--mid);line-height:1.6">즉시 상대방 프로필에서 신고 버튼을 눌러주세요. 이메일로 증거 자료(스크린샷)와 함께 문의해 주시면 신속히 처리합니다.</div>
+      </div>
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:4px">Q. 계정을 탈퇴하고 싶어요</div>
+        <div style="font-size:12px;color:var(--mid);line-height:1.6">현재 이메일로 탈퇴 요청을 보내주시면 영업일 기준 3일 내 처리해 드립니다. CCPA에 따라 모든 개인정보를 삭제해 드립니다.</div>
+      </div>
+      <div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+        <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:4px">Q. 광고는 어떻게 신청하나요?</div>
+        <div style="font-size:12px;color:var(--mid);line-height:1.6">업체·맛집 탭 하단의 광고 안내 버튼을 눌러 등급별 혜택을 확인하세요. 프로/프리미엄은 이메일로 문의해 주세요.</div>
+      </div>
+      <div style="padding:14px 16px">
+        <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:4px">Q. SMS 인증번호가 안 와요</div>
+        <div style="font-size:12px;color:var(--mid);line-height:1.6">화면 우측 하단의 reCAPTCHA를 먼저 완료한 후 재시도해 주세요. 그래도 안 되면 이메일로 문의해 주세요.</div>
+      </div>
+    </div>
+    <div style="height:40px"></div>
+  </div>
+</div>
 <!-- ══ 알림설정 ══ -->
 <div class="sc" id="sc-notif">
   <div class="dhead">
@@ -2828,7 +3186,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       <div class="pstat"><div class="psn">3</div><div class="psl">판매중</div></div>
     </div>
     <div class="pmenu">
-      <div class="pmi" onclick="showSc('mylistings');loadMyListings()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div><span class="pmi-t">나의 판매내역 My Listings</span><span class="pmi-cnt">3</span><span class="pmi-r">&#8250;</span></div>
+      <div class="pmi" onclick="showSalesHistory()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div><span class="pmi-t">나의 판매내역 My Listings</span><span class="pmi-cnt">3</span><span class="pmi-r">&#8250;</span></div>
       <div class="pmi" onclick="showPurchaseHistory()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><span class="pmi-t">나의 구매내역 Purchase History</span><span class="pmi-r">&#8250;</span></div>
       <div class="pmi"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><span class="pmi-t">관심 목록 Saved</span><span class="pmi-cnt">32</span><span class="pmi-r">&#8250;</span></div>
     </div>
@@ -2838,8 +3196,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       <div class="pmi" onclick="showSc('notif')"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><span class="pmi-t">알림 설정 Notifications</span><span class="pmi-r">&#8250;</span></div>
     </div>
     <div class="pmenu">
-      <div class="pmi" onclick="alert('문의: orangemarket.oc@gmail.com')" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg></div><span class="pmi-t">고객 지원 Support</span><span class="pmi-r">&#8250;</span></div>
-      <div class="pmi"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><span class="pmi-t">이용 약관 / 개인정보 Terms &amp; Privacy</span><span class="pmi-r">&#8250;</span></div>
+      <div class="pmi" onclick="showSc('support')" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg></div><span class="pmi-t">고객 지원 Support</span><span class="pmi-r">&#8250;</span></div>
+      <div class="pmi" onclick="showSc('terms')" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><span class="pmi-t">이용 약관 / 개인정보 Terms &amp; Privacy</span><span class="pmi-r">&#8250;</span></div>
     </div>
   </div>
   <div id="logoutSection" style="display:none" id="logoutSection" style="display:none;margin:4px 13px 20px">
@@ -2965,7 +3323,335 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 </div>
 </div>
 <script>
-var HIDENAV=['sc-detail','sc-chat','sc-write','sc-sponsor','sc-review','sc-search','sc-notif','sc-job-write','sc-lesson-write','sc-biz-write','sc-funding','sc-auth','sc-payment','sc-payment-success','sc-ad-info','sc-chatlist','sc-mylistings','sc-userprofile','sc-editlisting'];
+var HIDENAV=['sc-detail','sc-chat','sc-write','sc-sponsor','sc-review','sc-search','sc-notif','sc-job-write','sc-lesson-write','sc-biz-write','sc-funding','sc-auth','sc-payment','sc-payment-success','sc-ad-info','sc-chatlist','sc-mylistings','sc-userprofile','sc-editlisting','sc-terms','sc-support'];
+var boostOpen=false,boostCnt=0,boostMax=5,curPrice=1200;
+var orgScores=[0,0,0,0,0];
+
+function showSc(n){
+  document.querySelectorAll('.sc').forEach(function(s){s.classList.remove('on');});
+  document.getElementById('sc-'+n).classList.add('on');
+  var hide=HIDENAV.indexOf('sc-'+n)>=0;
+  document.getElementById('bnav').style.display=hide?'none':'flex';
+  var fab=document.getElementById('fab');
+  if(fab)fab.style.display=(n==='home')?'flex':'none';
+}
+function setNav(n){
+  document.querySelectorAll('.bni').forEach(function(b){b.classList.remove('on');});
+  var el=document.getElementById('bni-'+n);if(el)el.classList.add('on');
+}
+function switchMain(btn,pid){
+  document.querySelectorAll('.mtab').forEach(function(t){t.classList.remove('on');});
+  btn.classList.add('on');
+  document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
+  document.getElementById(pid).classList.add('on');
+}
+function switchMainById(pid){
+  var ids=['p-market','p-jobs','p-realty','p-biz','p-comm','p-donate'];
+  document.querySelectorAll('.mtab').forEach(function(t,i){t.classList.toggle('on',ids[i]===pid);});
+  document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
+  document.getElementById(pid).classList.add('on');
+}
+function selSub(el){
+  var par=el.parentElement;
+  par.querySelectorAll('.sch').forEach(function(c){c.classList.remove('on');});
+  el.classList.add('on');
+}
+function selCat(el){
+  document.querySelectorAll('.catc').forEach(function(c){c.classList.remove('on');});
+  el.classList.add('on');
+}
+
+/* BOOST */
+function toggleBoost(){
+  boostOpen=!boostOpen;
+  document.getElementById('boostEd').style.display=boostOpen?'block':'none';
+  document.getElementById('boostBtn').textContent=boostOpen?'접기':'Boost';
+  if(boostOpen){
+    document.getElementById('boostInp').value=curPrice;
+    document.getElementById('boostPrevTag').textContent='이전: $'+curPrice.toLocaleString();
+  }
+}
+function selBoost(el){
+  document.querySelectorAll('.boost-opt').forEach(function(o){o.classList.remove('sel');});
+  el.classList.add('sel');
+}
+function doBoost(){
+  var newP=parseInt(document.getElementById('boostInp').value)||curPrice;
+  if(newP!==curPrice){
+    document.getElementById('dPrev').style.display='inline';
+    document.getElementById('dPrev').textContent='이전 $'+curPrice.toLocaleString();
+  }
+  curPrice=newP;
+  document.getElementById('dPrice').textContent='$'+newP.toLocaleString();
+  var _cp=document.getElementById('chatPrice');if(_cp)_cp.textContent='$'+newP.toLocaleString();
+  document.getElementById('boostEd').style.display='none';
+  boostOpen=false;
+  var btn=document.getElementById('boostBtn');
+  btn.textContent='&#128640; Boosted!';btn.style.background='var(--green)';
+  setTimeout(function(){btn.textContent='Boost';btn.style.background='var(--or)';},2500);
+}
+
+/* CHAT */
+function sendMsg(){
+  // Firebase 로그인된 경우만 Firebase 버전 사용
+  var cu = window._currentUser||(window._auth&&window._auth.currentUser);
+  if(window._fbSendMsg && cu){ window._fbSendMsg(); return; }
+  var inp=document.getElementById('msgInp');
+  var txt=inp.value.trim();if(!txt)return;
+  var list=document.getElementById('msgList');
+  var d=document.createElement('div');d.className='msg me';
+  d.innerHTML='<div><div class="bbl">'+txt.replace(/</g,'&lt;')+'</div></div><div class="mt">방금</div>';
+  list.appendChild(d);inp.value='';list.scrollTop=list.scrollHeight;
+}
+document.getElementById('msgInp').addEventListener('keydown',function(e){if(e.key==='Enter')sendMsg();});
+
+/* PHOTOS */
+var photoCnt=0;
+function addPhoto(btn){
+  if(photoCnt>=10)return;photoCnt++;
+  btn.classList.add('filled');
+  var ic=btn.querySelector('svg');if(ic)ic.style.opacity='.4';
+  var sp=btn.querySelector('span');if(sp)sp.textContent=photoCnt;
+  var g=document.getElementById('pgrid');
+  if(photoCnt<10){
+    var nb=document.createElement('div');nb.className='phbox';
+    nb.innerHTML='<svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;margin-bottom:3px"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>추가</span>';
+    nb.onclick=function(){addPhoto(this);};g.appendChild(nb);
+  }
+  document.getElementById('phCtr').textContent=photoCnt+' / 10장';
+}
+
+/* REVIEW - vibe */
+function calcDangdo(){
+  var filled=orgScores.filter(function(s){return s>0;});
+  if(!filled.length)return;
+  var avg=filled.reduce(function(a,b){return a+b;},0)/filled.length;
+  var grades=[
+    {min:4.5,lbl:'쏘 스윗',orgs:'&#127818;&#127818;&#127818;&#127818;&#127818;',w:100},
+    {min:3.5,lbl:'달콤',orgs:'&#127818;&#127818;&#127818;&#127818;',w:80},
+    {min:2.5,lbl:'상큼',orgs:'&#127818;&#127818;&#127818;',w:60},
+    {min:1.5,lbl:'싱그럽',orgs:'&#127818;&#127818;',w:40},
+    {min:0,lbl:'아이셔',orgs:'&#127818;',w:20}
+  ];
+  var g=grades[grades.length-1];
+  for(var i=0;i<grades.length;i++){if(avg>=grades[i].min){g=grades[i];break;}}
+  var gEl=document.getElementById('dangdoGrade');
+  var oEl=document.getElementById('dangdoOrgs');
+  var bEl=document.getElementById('dangdoBar');
+  if(gEl)gEl.innerHTML=g.lbl;
+  if(oEl)oEl.innerHTML=g.orgs;
+  if(bEl)bEl.style.width=g.w+'%';
+}
+function setOrg(clickedBtn,rowIdx,val){
+  var row=document.querySelectorAll('#revCats .rev-cat-row')[rowIdx];
+  var orgs=row.querySelectorAll('.rorg');
+  orgs.forEach(function(o,i){o.classList.toggle('on',i<val);});
+  orgScores[rowIdx]=val;
+  calcDangdo();
+}
+function submitReview(){
+  calcDangdo();
+  var btn=document.querySelector('.rev-submit');
+  btn.textContent='후기 등록 완료! &#127818;';btn.style.background='var(--green)';
+  setTimeout(function(){showSc('profile');},1400);
+}
+
+/* KEYWORDS */
+function addKw(){
+  var inp=document.getElementById('kwInput');
+  var txt=inp.value.trim();if(!txt)return;
+  var list=document.getElementById('kwList');
+  var items=list.querySelectorAll('.kw-item');
+  if(items.length>=5){
+    inp.style.outline='2px solid var(--or)';
+    inp.placeholder='최대 5개까지 가능합니다';
+    setTimeout(function(){inp.style.outline='';inp.placeholder='키워드 입력 (예: 아이폰, 소파...)';},2000);
+    return;
+  }
+  var d=document.createElement('div');
+  d.className='kw-item';
+  d.style.cssText='display:inline-flex;align-items:center;gap:5px;background:var(--or-bg);border:1px solid var(--or-bd);border-radius:20px;padding:5px 12px';
+  d.innerHTML='<span style="font-size:12px;font-weight:600;color:var(--or)">'+txt+'</span>'
+    +'<button onclick="this.parentElement.remove();updateKwCount()" style="background:none;border:none;color:var(--or);cursor:pointer;font-size:14px;line-height:1;padding:0">&times;</button>';
+  list.appendChild(d);inp.value='';updateKwCount();
+}
+function updateKwCount(){
+  var list=document.getElementById('kwList');if(!list)return;
+  var cnt=list.querySelectorAll('.kw-item').length;
+  var lbl=document.getElementById('kwCountLbl');if(lbl)lbl.textContent=cnt+'/5';
+}
+
+/* SPONSOR */
+var spDB={
+  hmart:{t:'H Mart - OC 한인마트',c:'한인마트 - 얼바인',d:'신선 식재료, 반찬, 즉석식품. 주말 특가!',ch:['📍 2500 Alton Pkwy, 얼바인','🕐 매일 8am-10pm','🎉 주말 20% 할인'],cta:'길찾기',bg:'linear-gradient(135deg,#2C1A0E,#3E2510)'},
+  boba:{t:'Sunright Tea Studio',c:'보바 - 카페 - 얼바인',d:'회원 첫 방문 10% 할인. 얼바인 오픈!',ch:['📍 Culver Plaza, 얼바인','🕐 월-일 11am-10pm','🎁 회원 10% 할인'],cta:'메뉴 보기',bg:'linear-gradient(135deg,#2A1A08,#3E2810)'},
+  nara:{t:'나라은행 - 모기지 상담',c:'금융 - 부동산 - OC',d:'한국어 융자 상담 가능. 회원 무료 30분 상담.',ch:['📍 얼바인 파이낸셜 센터','📞 1-800-NARA-OC','✅ 회원 무료 상담'],cta:'무료 상담 예약',bg:'linear-gradient(135deg,#0A1420,#0E1E30)'},
+  resume:{t:'OC Job Helper',c:'커리어 코칭 - OC',d:'이력서/면접 코칭. 무료 30분 첫 상담.',ch:['💻 온라인/대면 가능','⏱ 무료 30분','🌟 500건+ 취업 성공'],cta:'무료 세션 예약',bg:'linear-gradient(135deg,#0C1808,#161E0C)'},
+  academy:{t:'스타 아카데미 OC',c:'교육 - SAT - AP - 얼바인',d:'얼바인 최고 평점 학원. SAT, AP 전 과목.',ch:['📍 얼바인 Northwood 근처','📅 체험 수업 무료','🏆 10년 OC 실적'],cta:'체험 수업 예약',bg:'linear-gradient(135deg,#100820,#1A1030)'}
+};
+function openSponsor(id){
+  var d=spDB[id]||spDB.hmart;
+  document.getElementById('spHT').innerHTML='광고 AD';
+  document.getElementById('spT').innerHTML=d.t;
+  document.getElementById('spC').textContent=d.c;
+  document.getElementById('spD').textContent=d.d;
+  document.getElementById('spHero').style.background=d.bg;
+  document.getElementById('spCTA').innerHTML=d.cta;
+  var ch=document.getElementById('spCH');ch.innerHTML='';
+  d.ch.forEach(function(txt){var el=document.createElement('div');el.className='sp-chip';el.innerHTML=txt;ch.appendChild(el);});
+  showSc('sponsor');
+}
+
+function toggleSearchFilter(){
+  var p=document.getElementById('searchFilterPanel');
+  var b=document.getElementById('filterToggleBtn');
+  if(!p)return;
+  var showing=p.style.display!=='none';
+  p.style.display=showing?'none':'block';
+  if(b){b.style.background=showing?'var(--or-bg)':'var(--or)';b.style.color=showing?'var(--or)':'#fff';}
+}
+function toggleFilter(el){el.classList.toggle('on');}
+function selDonate(btn){
+  btn.parentElement.querySelectorAll('button').forEach(function(b){
+    b.style.borderColor='var(--line)';b.style.background='var(--w)';b.style.color='var(--mid)';
+  });
+  btn.style.borderColor='var(--or)';btn.style.background='var(--or-bg)';btn.style.color='var(--or)';
+}
+function sendQuick(btn){
+  var inp=document.getElementById('msgInp');
+  inp.value=btn.textContent.trim();
+  sendMsg();
+  // Hide quick replies after sending
+  var qr=document.getElementById('quickReplies');
+  if(qr)qr.style.display='none';
+}
+function toggleReserve(btn){
+  var isReserved=btn.dataset.reserved==='true';
+  if(!isReserved){
+    btn.dataset.reserved='true';
+    btn.textContent='예약중';
+    btn.style.background='var(--or)';
+    btn.style.color='#fff';
+    btn.style.borderColor='var(--or)';
+    // Add reserved message to chat
+    var list=document.getElementById('msgList');
+    var d=document.createElement('div');d.className='msg me';
+    d.innerHTML='<div><div class="bbl" style="background:var(--or)">예약 완료했습니다! 거래 시간과 장소를 조율해요 &#127818;</div></div><div class="mt">방금</div>';
+    list.appendChild(d);list.scrollTop=list.scrollHeight;
+    // Update item bar
+    var p=document.getElementById('chatPrice');
+    if(p)p.innerHTML+=' <span style="font-size:10px;font-weight:700;color:var(--w);background:var(--or);padding:2px 7px;border-radius:20px;margin-left:4px">예약중</span>';
+  } else {
+    btn.dataset.reserved='false';
+    btn.textContent='예약하기';
+    btn.style.background='none';
+    btn.style.color='var(--or)';
+    btn.style.borderColor='var(--or)';
+  }
+}
+function handleFab(){
+  // Smart FAB — routes based on active tab
+  var bizPanel=document.getElementById('p-biz');
+  var jobPanel=document.getElementById('p-jobs');
+  if(bizPanel && bizPanel.classList.contains('on')){
+    showSc('biz-write');
+  } else if(jobPanel && jobPanel.classList.contains('on')){
+    showSc('job-write');
+  } else {
+    showSc('write');
+  }
+}
+
+function switchAuth(tab){
+  var login=document.getElementById('auth-login');
+  var signup=document.getElementById('auth-signup');
+  var tl=document.getElementById('tab-login');
+  var ts=document.getElementById('tab-signup');
+  if(tab==='login'){
+    login.style.display='block'; signup.style.display='none';
+    tl.style.color='var(--or)'; tl.style.borderBottom='2.5px solid var(--or)';
+    ts.style.color='var(--muted)'; ts.style.borderBottom='2.5px solid transparent';
+  } else {
+    login.style.display='none'; signup.style.display='block';
+    ts.style.color='var(--or)'; ts.style.borderBottom='2.5px solid var(--or)';
+    tl.style.color='var(--muted)'; tl.style.borderBottom='2.5px solid transparent';
+  }
+}
+function checkPhoneInput(inp, btnId){
+  var btn=document.getElementById(btnId);
+  var clean=inp.value.replace(/[^0-9]/g,'');
+  var valid=clean.length>=10;
+  if(btn){
+    btn.disabled=!valid;
+    btn.style.background=valid?'var(--or)':'var(--line)';
+    btn.style.color=valid?'#fff':'var(--muted)';
+    btn.style.cursor=valid?'pointer':'not-allowed';
+  }
+}
+var authTimer=null;
+function sendSMS(type){
+  var wrapId=type==='login'?'loginOtpWrap':'signupOtpWrap';
+  var timerId=type==='login'?'loginTimer':null;
+  document.getElementById(wrapId).style.display='block';
+  // Countdown timer
+  if(authTimer)clearInterval(authTimer);
+  var secs=180;
+  var timerEl=document.getElementById('loginTimer');
+  if(timerEl){
+    authTimer=setInterval(function(){
+      secs--;
+      var m=Math.floor(secs/60);
+      var s=secs%60;
+      timerEl.textContent=m+':'+(s<10?'0':'')+s;
+      if(secs<=0){clearInterval(authTimer);timerEl.textContent='만료';}
+    },1000);
+  }
+  // Simulate: show demo OTP hint
+  setTimeout(function(){
+    var otp=document.getElementById('otpInp');
+    if(otp)otp.placeholder='123456 (demo)';
+  },500);
+}
+function verifyOTP(type){
+  if(type==='signup'){
+    var setup=document.getElementById('profileSetup');
+    if(setup)setup.style.display='block';
+  } else {
+    // Login complete
+    showSc('home');setNav('home');
+  }
+}
+function toggleAllAgree(cb){
+  document.querySelectorAll('.agree-item').forEach(function(c){c.checked=cb.checked;});
+}
+function socialLogin(provider){
+  // Demo: go straight to home
+  setTimeout(function(){showSc('home');setNav('home');},400);
+}
+function completeSignup(){
+  // Demo: go to neighborhood verification then home
+  showSc('home');setNav('home');
+  setTimeout(function(){openModal();},600);
+}
+function goProfile(){showSc('profile');setNav('profile');}
+function checkAndGoProfile(){
+  var u=window._currentUser||(window._auth&&window._auth.currentUser);
+  if(u){ window._currentUser=u; showSc('profile'); setNav('profile'); }
+  else  { showSc('auth'); setNav('profile'); }
+}
+window.checkAndGoProfile = checkAndGoProfile;
+function openModal(){document.getElementById('modalBg').classList.add('open');}
+function closeModal(){document.getElementById('modalBg').classList.remove('open');}function openDemoDetail() {
+  window._selectedListing = {
+    id:'demo_001', title:'MacBook Pro 14" M3 2023',
+    price:1200, isFree:false,
+    description:'M3 칩 · 16GB RAM · 512GB SSD. 구매 6개월, 케이스 씌워 사용.',
+    category:'가전/전자', neighborhood:'얼바인',
+    sellerNickname:'Jason K.', userId:'demo_seller_001',
+    images:[], status:'active'
+  };
+  showSc('detail');
+}var HIDENAV=['sc-detail','sc-chat','sc-write','sc-sponsor','sc-review','sc-search','sc-notif','sc-job-write','sc-lesson-write','sc-biz-write','sc-funding','sc-auth','sc-payment','sc-payment-success','sc-ad-info','sc-chatlist','sc-mylistings','sc-userprofile','sc-editlisting','sc-terms','sc-support'];
 var boostOpen=false,boostCnt=0,boostMax=5,curPrice=1200;
 var orgScores=[0,0,0,0,0];
 
