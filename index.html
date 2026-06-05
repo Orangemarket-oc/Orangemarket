@@ -910,6 +910,9 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       window._pendingPhotos = [];
       alert('매물 등록 완료! 🍊');
       showSc('home'); setNav('home');
+      window._pendingPhotos = [];
+      const preview = document.getElementById('photoPreview');
+      if (preview) preview.innerHTML = '';
       loadListings();
     } catch(e) { alert('등록 실패: '+e.message); }
   };
@@ -917,24 +920,49 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   // 사진 추가 (base64로 Firestore 저장 - Storage 없이)
   window.addPhotoFirebase = function(input) {
     if (!input.files || !input.files[0]) return;
+    if (!window._pendingPhotos) window._pendingPhotos = [];
+    if (window._pendingPhotos.length >= 3) { alert('사진은 최대 3장이에요.'); return; }
     const file = input.files[0];
-    if (file.size > 500000) { alert('사진이 너무 커요. 500KB 이하로 올려주세요.'); return; }
     const reader = new FileReader();
     reader.onload = (e) => {
-      if (!window._pendingPhotos) window._pendingPhotos = [];
-      if (window._pendingPhotos.length >= 3) { alert('사진은 최대 3장이에요.'); return; }
-      window._pendingPhotos.push(e.target.result);
-      // 미리보기 추가
-      const preview = document.getElementById('photoPreview');
-      if (preview) {
-        const img = document.createElement('img');
-        img.src = e.target.result;
-        img.style.cssText='width:70px;height:70px;object-fit:cover;border-radius:8px;margin:4px';
-        preview.appendChild(img);
-      }
-      alert(`사진 ${window._pendingPhotos.length}장 추가됨`);
+      // Canvas로 자동 압축 (최대 800px, 품질 70%)
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 800;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX/w); w = MAX; }
+          else { w = Math.round(w * MAX/h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        const sizeKB = Math.round(compressed.length * 0.75 / 1024);
+        window._pendingPhotos.push(compressed);
+        // 미리보기
+        const preview = document.getElementById('photoPreview');
+        if (preview) {
+          const thumb = document.createElement('div');
+          thumb.style.cssText = 'position:relative;display:inline-block;margin:4px';
+          thumb.innerHTML = '<img src="'+compressed+'" style="width:70px;height:70px;object-fit:cover;border-radius:8px;display:block">'
+            + '<button onclick="removePhoto(this)" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#C0392B;color:#fff;border:none;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">×</button>';
+          preview.appendChild(thumb);
+        }
+        console.log('사진 압축완료:', sizeKB+'KB');
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
+    input.value = ''; // 같은 파일 재선택 가능하게
+  };
+
+  window.removePhoto = function(btn) {
+    const thumb = btn.parentElement;
+    const idx = Array.from(thumb.parentElement.children).indexOf(thumb);
+    if (window._pendingPhotos) window._pendingPhotos.splice(idx, 1);
+    thumb.remove();
   };
 
   window.loadListings = async function() {
@@ -942,7 +970,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       const q = query(collection(db,'listings'),
         where('status','==','active'),
         orderBy('createdAt','desc'), limit(30));
-      const snap = await getDocs(q);
+      const snap = await getDocs(q).catch(e => { console.log('쿼리 오류:', e.message); return {docs:[]}; });
       const list = snap.docs.map(d=>({id:d.id,...d.data()}));
       _renderListings(list);
     } catch(e) { console.log('매물 로드:', e.message); }
@@ -988,8 +1016,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     if (!window._currentUser) return;
     try {
       const q = query(collection(db,'listings'),
-        where('userId','==',window._currentUser.uid),
-        orderBy('createdAt','desc'));
+        where('userId','==',window._currentUser.uid), limit(30));
       const snap = await getDocs(q);
       const list = snap.docs.map(d=>({id:d.id,...d.data()}));
       const container = document.getElementById('myListings');
@@ -1013,7 +1040,11 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
           </div>`;
         container.appendChild(el);
       });
-    } catch(e) { console.log('내 매물 로드:', e.message); }
+    } catch(e) {
+      console.log('내 매물 로드:', e.message);
+      const c = document.getElementById('myListings');
+      if (c) c.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">불러오는 중 오류가 났어요.<br>로그인 상태를 확인해주세요.</div>';
+    }
   };
 
   window.deleteListing = async function(id) {
@@ -1098,12 +1129,13 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     if (!container) return;
     try {
       const buyerQ = query(collection(db,'chats'),
-        where('buyerId','==',window._currentUser.uid),
-        orderBy('lastMessageAt','desc'), limit(20));
+        where('buyerId','==',window._currentUser.uid), limit(20));
       const sellerQ = query(collection(db,'chats'),
-        where('sellerId','==',window._currentUser.uid),
-        orderBy('lastMessageAt','desc'), limit(20));
-      const [buyerSnap,sellerSnap] = await Promise.all([getDocs(buyerQ),getDocs(sellerQ)]);
+        where('sellerId','==',window._currentUser.uid), limit(20));
+      const [buyerSnap,sellerSnap] = await Promise.all([
+        getDocs(buyerQ).catch(()=>({docs:[]})),
+        getDocs(sellerQ).catch(()=>({docs:[]}))
+      ]);
       const all = [...buyerSnap.docs,...sellerSnap.docs]
         .map(d=>({id:d.id,...d.data()}))
         .sort((a,b)=>b.lastMessageAt?.seconds-a.lastMessageAt?.seconds);
@@ -1134,7 +1166,11 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         };
         container.appendChild(el);
       });
-    } catch(e) { console.log('채팅 목록 오류:', e.message); }
+    } catch(e) {
+      console.log('채팅 목록 오류:', e.message);
+      const c = document.getElementById('chatListContainer');
+      if (c) c.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)"><div style="font-size:36px;margin-bottom:12px">💬</div><div>채팅 목록을 불러오지 못했어요.<br>잠시 후 다시 시도해주세요.</div></div>';
+    }
   };
 
   // ════════════════════════════════════════════════════════
@@ -1254,8 +1290,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
       // 유저 매물
       const listQ = query(collection(db,'listings'),
-        where('userId','==',userId), where('status','==','active'),
-        orderBy('createdAt','desc'), limit(10));
+        where('userId','==',userId), where('status','==','active'), limit(10));
       const listSnap = await getDocs(listQ);
       const listings = listSnap.docs.map(d=>({id:d.id,...d.data()}));
       const listContainer = document.getElementById('userListings');
@@ -1276,7 +1311,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
       // 유저 리뷰
       const revQ = query(collection(db,'reviews'),
-        where('targetId','==',userId), orderBy('createdAt','desc'), limit(5));
+        where('targetId','==',userId), limit(5));
       const revSnap = await getDocs(revQ);
       const revContainer = document.getElementById('userReviews');
       if (revContainer) {
@@ -1658,13 +1693,13 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
     <div class="sech"><div class="secht">커뮤니티 Community<small>· 수다방 &amp; 모임</small></div><div class="secha">+ 글쓰기</div></div>
 
-    <div class="comm-card">
+    <div class="comm-card" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer">
       <div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div>
       <div class="cc-title">얼바인 스펙트럼 주차 너무 힘들죠? 😅</div>
       <div class="cc-prev">토요일 저녁에 갔는데 B2가 5시에 이미 만차... 보통 어느 층 세워요?</div>
       <div class="cc-foot"><div class="cc-av">M</div><span class="cc-author">박민지</span><div class="cc-st"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>34</div><div class="cc-st"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>18</div></div>
     </div>
-    <div class="comm-card">
+    <div class="comm-card" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer">
       <div class="cc-top"><span class="cc-cat cc-info">정보</span><span class="cc-time">22분 전</span></div>
       <div class="cc-title">레이크포레스트에 H마트 연내 오픈 예정!</div>
       <div class="cc-prev">구 랄프스 자리에 생긴다고 들었어요. 공식 확인은 아니지만 기대됩니다!</div>
@@ -1675,21 +1710,21 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
     <!-- 모임 within 커뮤니티 -->
     <div class="sech" style="padding-top:8px"><div class="secht">동네 모임 Gatherings</div><div class="secha">+ 만들기</div></div>
-    <div class="meetcard">
+    <div class="meetcard" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer">
       <div class="mc-top">
         <div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div>
         <div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park 테니스장</div></div>
       </div>
       <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명 참가</span><button class="mc-join">참가</button></div>
     </div>
-    <div class="meetcard">
+    <div class="meetcard" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer">
       <div class="mc-top">
         <div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">12</div></div>
         <div><div class="mc-t">한인 독서모임 — 4월 책</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 스타벅스 &#183; Culver Dr.</div></div>
       </div>
       <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#FAD4C8">A</div><div class="mc-av" style="background:#C8D4FA">B</div></div><span class="mc-cnt">+6명 참가</span><button class="mc-join">참가</button></div>
     </div>
-    <div class="comm-card">
+    <div class="comm-card" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer">
       <div class="cc-top"><span class="cc-cat cc-ask">질문</span><span class="cc-time">1시간 전</span></div>
       <div class="cc-title">알리소비에호 근처 맛있는 한식당 추천해 주세요</div>
       <div class="cc-prev">이사 온 지 한 달 됐는데 삼겹살이나 순두부 맛있는 곳 15분 이내로!</div>
@@ -2505,7 +2540,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     <textarea class="wta" placeholder="상품 상태, 구매 시기, 직거래 희망 장소 등&#10;Condition, purchase date, meet-up location..."></textarea>
     <div class="wsec">거래 지역 Location</div>
     <div class="wloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>얼바인 노스우드 &#183; Verified &#10003;</span></div>
-    <button class="wsub">등록하기 Post Listing</button>
+    <button class="wsub" onclick="submitListing()">등록하기 Post Listing</button>
     <div style="height:24px"></div>
   </div>
 </div>
@@ -2576,9 +2611,9 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
   <div style="flex:1;overflow-y:auto;scrollbar-width:none;background:var(--cream)">
     <div class="sech"><div class="secht">이 동네 수다방<small>&#183; 노스우드</small></div><div class="secha" onclick="showSc('home');switchMainById('p-comm')">더 보기</div></div>
-    <div class="comm-card"><div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div><div class="cc-title">얼바인 스펙트럼 주차 너무 힘들죠? 😅</div><div class="cc-prev">토요일 저녁 B2가 5시에 이미 만차... 보통 어느 층 세워요?</div><div class="cc-foot"><div class="cc-av">M</div><span class="cc-author">박민지</span></div></div>
+    <div class="comm-card" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer"><div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div><div class="cc-title">얼바인 스펙트럼 주차 너무 힘들죠? 😅</div><div class="cc-prev">토요일 저녁 B2가 5시에 이미 만차... 보통 어느 층 세워요?</div><div class="cc-foot"><div class="cc-av">M</div><span class="cc-author">박민지</span></div></div>
     <div class="sech" style="padding-top:8px"><div class="secht">이 동네 모임<small>&#183; 노스우드</small></div><div class="secha" onclick="showSc('home');switchMainById('p-comm')">더 보기</div></div>
-    <div class="meetcard"><div class="mc-top"><div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div><div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park</div></div></div><div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명</span><button class="mc-join">참가</button></div></div>
+    <div class="meetcard" onclick="showSc('home');switchMainById('p-comm')" style="cursor:pointer"><div class="mc-top"><div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div><div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park</div></div></div><div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명</span><button class="mc-join">참가</button></div></div>
     <div style="height:80px"></div>
   </div>
 </div>
@@ -2891,20 +2926,7 @@ function sendMsg(){
 document.getElementById('msgInp').addEventListener('keydown',function(e){if(e.key==='Enter')sendMsg();});
 
 /* PHOTOS */
-var photoCnt=0;
-function addPhoto(btn){
-  if(photoCnt>=10)return;photoCnt++;
-  btn.classList.add('filled');
-  var ic=btn.querySelector('svg');if(ic)ic.style.opacity='.4';
-  var sp=btn.querySelector('span');if(sp)sp.textContent=photoCnt;
-  var g=document.getElementById('pgrid');
-  if(photoCnt<10){
-    var nb=document.createElement('div');nb.className='phbox';
-    nb.innerHTML='<svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;margin-bottom:3px"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>추가</span>';
-    nb.onclick=function(){addPhoto(this);};g.appendChild(nb);
-  }
-  document.getElementById('phCtr').textContent=photoCnt+' / 10장';
-}
+
 
 /* REVIEW - vibe */
 function calcDangdo(){
