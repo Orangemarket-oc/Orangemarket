@@ -678,27 +678,39 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     const phone = '+1' + inp.value.replace(/\D/g,'');
     if (phone.length < 12) { alert('전화번호를 정확히 입력해주세요.'); return; }
     try {
-      // 기존 recaptcha 초기화
+      // reCAPTCHA div 완전히 새로 만들기
       if (window._recaptcha) {
         try { window._recaptcha.clear(); } catch(e) {}
         window._recaptcha = null;
       }
-      // rc-div 초기화
-      const rcDiv = document.getElementById('rc-div');
-      if (rcDiv) rcDiv.innerHTML = '';
+      let rcDiv = document.getElementById('rc-div');
+      if (rcDiv) rcDiv.remove();
+      rcDiv = document.createElement('div');
+      rcDiv.id = 'rc-div';
+      document.body.appendChild(rcDiv);
 
       window._recaptcha = new RecaptchaVerifier(auth, 'rc-div', {
         size: 'invisible',
         callback: () => {},
         'expired-callback': () => { window._recaptcha = null; }
       });
-      await window._recaptcha.render();
+
       window._confirmResult = await signInWithPhoneNumber(auth, phone, window._recaptcha);
+
+      // OTP 입력창 표시
       const wrap = document.getElementById(type==='login' ? 'loginOtpWrap' : 'signupOtpWrap');
       if (wrap) wrap.style.display = 'block';
-      // 타이머
-      let s=180; const el=document.getElementById('loginTimer');
-      const t=setInterval(()=>{ s--; if(el) el.textContent=Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60; if(s<=0) clearInterval(t); },1000);
+
+      // 타이머 시작
+      let s = 180;
+      const el = document.getElementById('loginTimer');
+      if (el) el.textContent = '3:00';
+      const t = setInterval(() => {
+        s--;
+        if (el) el.textContent = Math.floor(s/60) + ':' + (s%60 < 10 ? '0' : '') + s%60;
+        if (s <= 0) clearInterval(t);
+      }, 1000);
+
       alert('인증번호가 발송됐습니다! 📱');
     } catch(e) {
       console.error('SMS 에러:', e.code, e.message);
@@ -707,18 +719,16 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         window._recaptcha = null;
       }
       if (e.code === 'auth/invalid-phone-number') {
-        alert('전화번호를 확인해주세요.');
+        alert('전화번호 형식이 맞지 않습니다.');
       } else if (e.code === 'auth/too-many-requests') {
         alert('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.');
-      } else if (e.code === 'auth/quota-exceeded') {
-        alert('SMS 한도 초과. 내일 다시 시도해주세요.');
       } else {
         alert('발송 실패: ' + e.message);
       }
     }
   };
 
-  // OTP 확인
+    // OTP 확인
   window.verifyOTP = async function(type) {
     const otp = document.getElementById('otpInp')?.value?.trim();
     if (!otp) { alert('인증번호를 입력해주세요.'); return; }
