@@ -730,21 +730,31 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
     // OTP 확인
   window.verifyOTP = async function(type) {
-    const otp = document.getElementById('otpInp')?.value?.trim();
-    if (!otp) { alert('인증번호를 입력해주세요.'); return; }
-    if (!window._confirmResult) { alert('먼저 SMS 인증번호를 받아주세요.'); return; }
+    const otpEl = document.getElementById('otpInp');
+    const otp = otpEl ? otpEl.value.toString().trim() : '';
+    console.log('OTP 입력값:', otp, '길이:', otp.length);
+    if (!otp || otp.length < 4) { alert('인증번호를 입력해주세요.'); return; }
+    if (!window._confirmResult) { alert('먼저 SMS 인증번호 받기를 눌러주세요.'); return; }
     try {
+      console.log('OTP 확인 시도...');
       const result = await window._confirmResult.confirm(otp);
       const user = result.user;
+      console.log('OTP 성공! UID:', user.uid);
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
         if (snap.exists()) {
-          // 기존 유저 로그인
+          // 기존 유저 로그인 → 홈으로
           window._userProfile = snap.data();
           showSc('home'); setNav('home');
+          // loginBanner 숨기기
+          const banner = document.getElementById('loginBanner');
+          if (banner) banner.style.display = 'none';
+          // 닉네임 업데이트
+          const nm = document.querySelector('.pnm');
+          if (nm && window._userProfile.nickname) nm.textContent = window._userProfile.nickname;
           alert('로그인 완료! 🍊');
         } else {
-          // 신규 유저 → 프로필 설정
+          // 신규 유저 → 닉네임 입력 화면
           window._newUid = user.uid;
           const setup = document.getElementById('profileSetup');
           if (setup) {
@@ -753,7 +763,6 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
           }
         }
       } catch(dbErr) {
-        // DB 오류여도 일단 홈으로
         console.error('DB 오류:', dbErr);
         showSc('home'); setNav('home');
         alert('로그인됐습니다! 🍊');
@@ -1692,7 +1701,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       <div id="loginOtpWrap" style="display:none;margin-top:18px">
         <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:7px">인증번호 Verification Code</div>
         <div style="display:flex;gap:8px;margin-bottom:6px">
-          <input id="otpInp" type="number" maxlength="6" style="flex:1;border:1.5px solid var(--or);border-radius:var(--r);padding:13px 14px;font-size:22px;font-weight:700;font-family:inherit;outline:none;color:#3E2510;background:var(--w);letter-spacing:.2em;text-align:center" placeholder="000000">
+          <input id="otpInp" type="tel" maxlength="6" style="flex:1;border:1.5px solid var(--or);border-radius:var(--r);padding:13px 14px;font-size:22px;font-weight:700;font-family:inherit;outline:none;color:#3E2510;background:var(--w);letter-spacing:.2em;text-align:center" placeholder="000000">
         </div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:14px">인증번호가 발송됐습니다. <span style="color:var(--or);font-weight:600;cursor:pointer" onclick="sendSMS('login')">재발송</span> <span id="loginTimer" style="color:var(--muted)">3:00</span></div>
         <button onclick="verifyOTP('login')" style="width:100%;padding:13px;background:var(--or);border:none;border-radius:var(--r);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">로그인 Sign In</button>
