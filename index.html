@@ -1058,14 +1058,21 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       list.forEach(l => {
         const el = document.createElement('div');
         el.style.cssText='display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);align-items:center';
+        // 상태 배지 색상
+        const statusColor = l.status==='active' ? 'var(--green)' : l.status==='reserved' ? 'var(--or)' : 'var(--muted)';
+        const statusText  = l.status==='active' ? '판매중' : l.status==='reserved' ? '예약중' : '판매완료';
         el.innerHTML=`
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.title}</div>
-            <div style="font-size:12px;color:var(--muted)">${l.isFree?'무료':'$'+l.price?.toLocaleString()} · ${l.status==='active'?'판매중':l.status==='reserved'?'예약중':'판매완료'}</div>
+          <div style="flex:1;min-width:0;cursor:pointer" onclick="window._selectedListing=${JSON.stringify(l).replace(/`/g,'').replace(/"/g,"'")};_loadDetail(window._selectedListing);showSc('detail')">
+            <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.title}</div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:12px;color:var(--muted)">${l.isFree?'무료':'$'+(l.price||0).toLocaleString()}</span>
+              <span style="font-size:11px;font-weight:600;color:${statusColor};background:${statusColor}18;padding:2px 7px;border-radius:20px">${statusText}</span>
+            </div>
           </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            <button onclick="deleteListing('${l.id}')" style="padding:6px 10px;border:1px solid #F5C6C2;border-radius:6px;background:#FDF0EE;color:#C0392B;font-size:11px;cursor:pointer;font-family:inherit">삭제</button>
+          <div style="display:flex;gap:5px;flex-shrink:0">
+            <button onclick="editListing(${JSON.stringify(l).replace(/`/g,'').replace(/"/g,"'")})" style="padding:6px 10px;border:1.5px solid var(--or-bd);border-radius:6px;background:var(--or-bg);color:var(--or);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">수정</button>
             <button onclick="markSold('${l.id}')" style="padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--ivory);color:#3E2510;font-size:11px;cursor:pointer;font-family:inherit">${l.status==='sold'?'재등록':'완료'}</button>
+            <button onclick="deleteListing('${l.id}')" style="padding:6px 10px;border:1px solid #F5C6C2;border-radius:6px;background:#FDF0EE;color:#C0392B;font-size:11px;cursor:pointer;font-family:inherit">삭제</button>
           </div>`;
         container.appendChild(el);
       });
@@ -1095,7 +1102,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   // ════════════════════════════════════════════════════════
   window.startChat = async function() {
     const l = window._selectedListing;
-    if (!l) return;
+    if (!l) { alert('매물 정보를 불러오는 중이에요. 잠시 후 다시 눌러주세요.'); return; }
     if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); return; }
     if (l.userId===window._currentUser.uid) { alert('내 매물이에요.'); return; }
     const chatId = [window._currentUser.uid, l.userId, l.id].sort().join('_');
@@ -1381,6 +1388,242 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       HIDENAV.push(HIDENAV_ADD);
     }
   });
+
+
+  // ── 구매내역 ──
+  window.showPurchaseHistory = async function() {
+    if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); return; }
+    // 내가 buyerId인 채팅들 = 구매 내역
+    try {
+      const q = query(collection(db,'chats'),
+        where('buyerId','==',window._currentUser.uid), limit(20));
+      const snap = await getDocs(q).catch(()=>({docs:[]}));
+      const items = snap.docs.map(d=>({id:d.id,...d.data()}));
+
+      const html = items.length === 0
+        ? '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">🛍️</div><div style="font-size:15px;font-weight:700;color:var(--mid)">구매내역이 없어요</div></div>'
+        : items.map(c=>`
+            <div onclick="window._activeChatId='${c.id}';window._loadMessages('${c.id}');showSc('chat')"
+              style="display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:#fff;cursor:pointer">
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:600;color:#3E2510;margin-bottom:3px">${c.listingTitle||'매물'}</div>
+                <div style="font-size:12px;color:var(--muted)">판매자: ${c.sellerNickname||'판매자'} · ${c.status==='completed'?'거래완료':'진행중'}</div>
+                <div style="font-size:13px;font-weight:700;color:var(--or);margin-top:2px">$${(c.listingPrice||0).toLocaleString()}</div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);flex-shrink:0">${c.status==='completed'?'✅ 완료':'💬 채팅중'}</div>
+            </div>`).join('');
+
+      // 임시 모달로 표시
+      _showSheet('나의 구매내역', html);
+    } catch(e) { alert('불러오기 실패: '+e.message); }
+  };
+
+  // ── 관심목록 ──
+  window.showSavedListings = async function() {
+    if (!window._currentUser) { alert('로그인이 필요해요.'); showSc('auth'); return; }
+    const saved = JSON.parse(localStorage.getItem('om_saved_'+window._currentUser.uid)||'[]');
+    if (saved.length === 0) {
+      _showSheet('관심 목록', '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">🤍</div><div style="font-size:15px;font-weight:700;color:var(--mid)">관심 목록이 비어있어요</div><div style="font-size:13px;margin-top:6px">매물에서 ♡ 를 눌러 저장하세요</div></div>');
+      return;
+    }
+    // saved된 listing id들로 매물 가져오기
+    try {
+      const promises = saved.slice(0,10).map(id => getDoc(doc(db,'listings',id)));
+      const snaps = await Promise.all(promises);
+      const items = snaps.filter(s=>s.exists()).map(s=>({id:s.id,...s.data()}));
+      const html = items.map(l=>`
+        <div onclick="window._selectedListing=${JSON.stringify(l).replace(/"/g,"'")};showSc('detail');_loadDetail(${JSON.stringify(l).replace(/"/g,"'")})"
+          style="display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);background:#fff;cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:2px">${l.title}</div>
+            <div style="font-size:13px;font-weight:700;color:var(--or)">${l.isFree?'무료 나눔':'$'+(l.price||0).toLocaleString()}</div>
+          </div>
+        </div>`).join('');
+      _showSheet('관심 목록', html);
+    } catch(e) { alert('불러오기 실패'); }
+  };
+
+  // ── 관심 추가/제거 (하트 버튼) ──
+  window.toggleSave = function(listingId) {
+    if (!window._currentUser) { alert('로그인이 필요해요.'); return; }
+    const key = 'om_saved_'+window._currentUser.uid;
+    const saved = JSON.parse(localStorage.getItem(key)||'[]');
+    const idx = saved.indexOf(listingId);
+    if (idx >= 0) {
+      saved.splice(idx,1);
+      alert('관심 목록에서 제거됐어요.');
+    } else {
+      saved.unshift(listingId);
+      alert('관심 목록에 추가됐어요 🤍');
+    }
+    localStorage.setItem(key, JSON.stringify(saved));
+    // 하트 버튼 상태 업데이트
+    const heartBtn = document.getElementById('heartBtn');
+    if (heartBtn) heartBtn.style.color = idx >= 0 ? '' : '#E8571A';
+  };
+
+  // ── 간단 바텀시트 ──
+  function _showSheet(title, html) {
+    let sheet = document.getElementById('_tmpSheet');
+    if (!sheet) {
+      sheet = document.createElement('div');
+      sheet.id = '_tmpSheet';
+      sheet.style.cssText = 'position:fixed;inset:0;z-index:300;display:flex;flex-direction:column;justify-content:flex-end';
+      sheet.innerHTML = '<div onclick="this.parentElement.remove()" style="flex:1;background:rgba(0,0,0,.4)"></div>'
+        + '<div style="background:#fff;border-radius:20px 20px 0 0;max-height:80vh;display:flex;flex-direction:column">'
+        + '<div style="padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">'
+        + '<span id="_sheetTitle" style="font-size:16px;font-weight:700;color:#3E2510"></span>'
+        + '<button onclick="document.getElementById('_tmpSheet').remove()" style="background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer">×</button>'
+        + '</div><div id="_sheetBody" style="overflow-y:auto;flex:1"></div></div>';
+      document.body.appendChild(sheet);
+    } else {
+      sheet.style.display = 'flex';
+    }
+    document.getElementById('_sheetTitle').textContent = title;
+    document.getElementById('_sheetBody').innerHTML = html;
+  }
+
+
+  // ════════════════════════════════════════════════════════
+  // ✏️ 매물 수정
+  // ════════════════════════════════════════════════════════
+
+  // 수정 화면 열기 - 기존 데이터 채우기
+  window.editListing = function(listing) {
+    if (typeof listing === 'string') {
+      try { listing = JSON.parse(listing); } catch(e) { return; }
+    }
+    window._editingListing = listing;
+    window._editPhotos = [...(listing.images || [])];
+
+    // 기존 값 채우기
+    const titleEl = document.getElementById('editTitle');
+    const priceEl = document.getElementById('editPrice');
+    const descEl  = document.getElementById('editDesc');
+    if (titleEl) titleEl.value = listing.title || '';
+    if (priceEl) priceEl.value = listing.isFree ? '' : (listing.price || '');
+    if (descEl)  descEl.value  = listing.description || '';
+
+    // 상태 버튼 초기화
+    ['active','reserved','sold'].forEach(s => {
+      const btn = document.getElementById('editStatus_'+s);
+      if (!btn) return;
+      const isActive = s === (listing.status || 'active');
+      btn.style.borderColor  = isActive ? 'var(--or)' : 'var(--line)';
+      btn.style.background   = isActive ? 'var(--or-bg)' : '#fff';
+      btn.style.color        = isActive ? 'var(--or)' : 'var(--muted)';
+    });
+    window._editStatus = listing.status || 'active';
+
+    // 기존 사진 미리보기
+    const preview = document.getElementById('editPhotoPreview');
+    if (preview) {
+      preview.innerHTML = '';
+      (listing.images || []).forEach((src, i) => {
+        const div = document.createElement('div');
+        div.style.cssText = 'position:relative;display:inline-block';
+        div.innerHTML = `<img src="${src}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;display:block">`
+          + `<button onclick="removeEditPhoto(${i})" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#C0392B;color:#fff;border:none;font-size:11px;cursor:pointer">×</button>`;
+        preview.appendChild(div);
+      });
+    }
+
+    showSc('editlisting');
+  };
+
+  // 상태 선택
+  window.selectEditStatus = function(btn, status) {
+    window._editStatus = status;
+    ['active','reserved','sold'].forEach(s => {
+      const b = document.getElementById('editStatus_'+s);
+      if (!b) return;
+      const isActive = s === status;
+      b.style.borderColor = isActive ? 'var(--or)' : 'var(--line)';
+      b.style.background  = isActive ? 'var(--or-bg)' : '#fff';
+      b.style.color       = isActive ? 'var(--or)' : 'var(--muted)';
+    });
+  };
+
+  // 수정 사진 추가
+  window.addEditPhoto = function(input) {
+    if (!input.files || !input.files[0]) return;
+    if (!window._editPhotos) window._editPhotos = [];
+    if (window._editPhotos.length >= 3) { alert('사진은 최대 3장이에요.'); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 800;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX/w); w = MAX; }
+          else { w = Math.round(w * MAX/h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        window._editPhotos.push(compressed);
+        const preview = document.getElementById('editPhotoPreview');
+        if (preview) {
+          const div = document.createElement('div');
+          div.style.cssText = 'position:relative;display:inline-block';
+          const idx = window._editPhotos.length - 1;
+          div.innerHTML = `<img src="${compressed}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;display:block">`
+            + `<button onclick="removeEditPhoto(${idx})" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#C0392B;color:#fff;border:none;font-size:11px;cursor:pointer">×</button>`;
+          preview.appendChild(div);
+        }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(input.files[0]);
+    input.value = '';
+  };
+
+  window.removeEditPhoto = function(idx) {
+    if (window._editPhotos) window._editPhotos.splice(idx, 1);
+    // 미리보기 새로고침
+    if (window._editingListing) {
+      const temp = {...window._editingListing, images: window._editPhotos};
+      window.editListing(temp);
+    }
+  };
+
+  // 수정 저장
+  window.saveEditListing = async function() {
+    const listing = window._editingListing;
+    if (!listing?.id) { alert('수정할 매물 정보가 없어요.'); return; }
+
+    const titleEl = document.getElementById('editTitle');
+    const priceEl = document.getElementById('editPrice');
+    const descEl  = document.getElementById('editDesc');
+
+    const title = (titleEl?.value || '').trim();
+    const price = priceEl?.value ? Number(priceEl.value) : 0;
+    const desc  = (descEl?.value || '').trim();
+
+    if (!title) { alert('제목을 입력해주세요.'); return; }
+
+    try {
+      await updateDoc(doc(db, 'listings', listing.id), {
+        title,
+        price,
+        isFree:      price === 0,
+        description: desc,
+        status:      window._editStatus || listing.status || 'active',
+        images:      window._editPhotos || listing.images || [],
+        updatedAt:   serverTimestamp(),
+      });
+
+      alert('수정 완료! 🍊');
+      window._editingListing = null;
+      window._editPhotos = [];
+      showSc('mylistings');
+      loadMyListings(); // 목록 새로고침
+    } catch(e) {
+      alert('수정 실패: ' + e.message);
+    }
+  };
 
 </script>
 </head>
@@ -2428,7 +2671,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     <div style="height:80px"></div>
   </div>
   <div class="dfoot">
-    <button class="fav-btn" id="favBtn" onclick="this.classList.toggle('on')">
+    <button class="fav-btn" id="favBtn" onclick="this.classList.toggle('on');if(window._selectedListing)toggleSave(window._selectedListing.id)">
       <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
     </button>
     <button class="cta-btn" onclick="startChat()">채팅으로 문의하기</button>
@@ -2662,6 +2905,65 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 </div>
 
 
+
+<!-- ══ 매물 수정 ══ -->
+<div class="sc" id="sc-editlisting">
+  <div class="sbar">
+    <button class="back-btn" onclick="showSc('mylistings')">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <span class="sbar-t">매물 수정 Edit Listing</span>
+    <button onclick="saveEditListing()" style="background:none;border:none;color:var(--or);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">저장</button>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:16px">
+
+    <!-- 사진 -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">사진 수정 Photos</div>
+      <div id="editPhotoPreview" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+      <button onclick="document.getElementById('editPhotoFile').click()" style="padding:8px 14px;border:1.5px dashed var(--line);border-radius:8px;background:var(--ivory);color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit">
+        + 사진 추가
+      </button>
+      <input type="file" id="editPhotoFile" accept="image/*" style="display:none" onchange="addEditPhoto(this)">
+    </div>
+
+    <!-- 제목 -->
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">제목 Title *</div>
+      <input id="editTitle" class="winp" style="width:100%" placeholder="제목을 입력하세요">
+    </div>
+
+    <!-- 가격 -->
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">가격 Price</div>
+      <input id="editPrice" class="winp" type="number" style="width:100%" placeholder="$ 금액 (무료 나눔은 0)">
+    </div>
+
+    <!-- 설명 -->
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px">설명 Description</div>
+      <textarea id="editDesc" class="wta" style="width:100%;min-height:120px" placeholder="상품 상태, 구매 시기, 직거래 희망 장소 등"></textarea>
+    </div>
+
+    <!-- 상태 변경 -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">판매 상태 Status</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="selectEditStatus(this,'active')" id="editStatus_active" style="flex:1;padding:10px;border:1.5px solid var(--or);border-radius:8px;background:var(--or-bg);color:var(--or);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">판매중</button>
+        <button onclick="selectEditStatus(this,'reserved')" id="editStatus_reserved" style="flex:1;padding:10px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">예약중</button>
+        <button onclick="selectEditStatus(this,'sold')" id="editStatus_sold" style="flex:1;padding:10px;border:1.5px solid var(--line);border-radius:8px;background:#fff;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">판매완료</button>
+      </div>
+    </div>
+
+    <!-- 저장 버튼 -->
+    <button onclick="saveEditListing()" style="width:100%;padding:14px;background:var(--or);border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px">
+      수정 완료 Save Changes
+    </button>
+    <button onclick="showSc('mylistings')" style="width:100%;padding:12px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--muted);font-size:14px;cursor:pointer;font-family:inherit">
+      취소 Cancel
+    </button>
+  </div>
+</div>
 <!-- ══ 채팅 목록 ══ -->
 <div class="sc" id="sc-chatlist">
   <div class="sbar">
@@ -2808,8 +3110,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
     <div class="pmenu">
       <div class="pmi" onclick="showSc('mylistings');loadMyListings()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div><span class="pmi-t">나의 판매내역 My Listings</span><span class="pmi-cnt">3</span><span class="pmi-r">&#8250;</span></div>
-      <div class="pmi"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><span class="pmi-t">나의 구매내역 Purchase History</span><span class="pmi-r">&#8250;</span></div>
-      <div class="pmi"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><span class="pmi-t">관심 목록 Saved</span><span class="pmi-cnt">32</span><span class="pmi-r">&#8250;</span></div>
+      <div class="pmi" onclick="showPurchaseHistory()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><span class="pmi-t">나의 구매내역 Purchase History</span><span class="pmi-r">&#8250;</span></div>
+      <div class="pmi" onclick="showSavedListings()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><span class="pmi-t">관심 목록 Saved</span><span class="pmi-cnt">32</span><span class="pmi-r">&#8250;</span></div>
     </div>
     <div class="pmenu">
       <div class="pmi" onclick="openModal()"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div><span class="pmi-t">동네 인증 Neighborhood Verify</span><span class="pmi-vb">Verified</span><span class="pmi-r" style="margin-left:6px">&#8250;</span></div>
@@ -2818,7 +3120,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     </div>
     <div class="pmenu">
       <div class="pmi"><div class="pmi-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg></div><span class="pmi-t">고객 지원 Support</span><span class="pmi-r">&#8250;</span></div>
-      <div class="pmi"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><span class="pmi-t">이용 약관 / 개인정보 Terms &amp; Privacy</span><span class="pmi-r">&#8250;</span></div>
+      <div class="pmi" onclick="window.open('https://orangemarket-kappa.vercel.app/terms','_blank')||alert('이용약관 준비 중입니다.')" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><span class="pmi-t">이용 약관 / 개인정보 Terms &amp; Privacy</span><span class="pmi-r">&#8250;</span></div>
     </div>
   </div>
   <div id="logoutSection" style="display:none" id="logoutSection" style="display:none;margin:4px 13px 20px">
