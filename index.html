@@ -1633,14 +1633,33 @@ window.searchListings = async function() {
           var date = (l.createdAt&&l.createdAt.seconds)?new Date(l.createdAt.seconds*1000).toLocaleDateString('ko-KR'):'';
           var sc = l.status==='active'?'var(--green)':l.status==='reserved'?'var(--or)':'var(--muted)';
           var st = l.status==='active'?'판매중':l.status==='reserved'?'예약중':'판매완료';
+          var wrap = document.createElement('div');
+          wrap.style.cssText='border-bottom:1px solid var(--line);background:#fff';
           var row = document.createElement('div');
-          row.style.cssText='display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:#fff;cursor:pointer';
-          row.innerHTML='<div style="flex:1"><div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:3px">'+l.title+'</div><div style="font-size:13px;font-weight:700;color:var(--or)">'+(l.isFree?'무료':'$'+(l.price||0).toLocaleString())+'</div><div style="font-size:11px;color:var(--muted)">'+date+' · 탭하여 수정</div></div><span style="font-size:11px;font-weight:600;color:'+sc+';background:'+sc+'18;padding:3px 8px;border-radius:20px;align-self:center">'+st+'</span>';
+          row.style.cssText='display:flex;gap:12px;padding:14px 16px 8px;cursor:pointer';
+          row.innerHTML='<div style="flex:1"><div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:3px">'+l.title+'</div><div style="font-size:13px;font-weight:700;color:var(--or)">'+(l.isFree?'무료':'$'+(l.price||0).toLocaleString())+'</div><div style="font-size:11px;color:var(--muted)">'+date+'</div></div><span style="font-size:11px;font-weight:600;color:'+sc+';background:'+sc+'18;padding:3px 8px;border-radius:20px;align-self:center">'+st+'</span>';
           row.addEventListener('click', function() {
             var sh = document.getElementById('om_sheet'); if (sh) sh.remove();
             if (window.editListing) window.editListing(l);
           });
-          return row;
+          // 액션 버튼들
+          var btnRow = document.createElement('div');
+          btnRow.style.cssText='display:flex;gap:6px;padding:0 16px 12px';
+          var bumpBtn = document.createElement('button');
+          bumpBtn.textContent = '🔼 끌올';
+          bumpBtn.style.cssText='flex:1;padding:7px;background:var(--ivory);border:1px solid var(--line);border-radius:8px;color:var(--mid);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit';
+          bumpBtn.onclick = function(e){ e.stopPropagation(); window.bumpListing(l.id); };
+          var boostBtn = document.createElement('button');
+          boostBtn.textContent = '🚀 부스트';
+          boostBtn.style.cssText='flex:1;padding:7px;background:var(--or-bg);border:1px solid var(--or-bd);border-radius:8px;color:var(--or);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit';
+          boostBtn.onclick = function(e){ e.stopPropagation(); window.boostListing(l.id); };
+          var editBtn = document.createElement('button');
+          editBtn.textContent = '✏️ 수정';
+          editBtn.style.cssText='flex:1;padding:7px;background:var(--ivory);border:1px solid var(--line);border-radius:8px;color:var(--mid);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit';
+          editBtn.onclick = function(e){ e.stopPropagation(); var sh=document.getElementById('om_sheet'); if(sh)sh.remove(); if(window.editListing)window.editListing(l); };
+          btnRow.appendChild(bumpBtn); btnRow.appendChild(boostBtn); btnRow.appendChild(editBtn);
+          wrap.appendChild(row); wrap.appendChild(btnRow);
+          return wrap;
         });
       } catch(e){ return []; }
     })();
@@ -1920,6 +1939,254 @@ window.searchListings = async function() {
       alert('탈퇴 처리 중 오류가 발생했어요.\n고객지원으로 문의해주세요: orangemarket.oc@gmail.com');
     }
   };
+
+  // ════ 끌어올리기 (무료, 24시간마다) ════
+  window.bumpListing = async function(listingId) {
+    var cu = window._currentUser || (window._auth && window._auth.currentUser);
+    if (!cu) { alert('로그인이 필요해요.'); return; }
+    if (!listingId) { alert('매물을 찾을 수 없어요.'); return; }
+    // 마지막 끌올 시간 체크 (localStorage)
+    var key = 'om_bump_' + listingId;
+    var last = parseInt(localStorage.getItem(key) || '0');
+    var now = Date.now();
+    var DAY = 24 * 60 * 60 * 1000;
+    if (now - last < DAY) {
+      var hrsLeft = Math.ceil((DAY - (now - last)) / (60*60*1000));
+      alert('끌어올리기는 24시간마다 한 번 가능해요.\n약 ' + hrsLeft + '시간 후에 다시 올릴 수 있어요.\n\n💡 지금 바로 상단에 고정하려면 유료 부스트를 이용하세요!');
+      return;
+    }
+    try {
+      // createdAt을 현재로 갱신 = 목록 최상단으로
+      await updateDoc(doc(db,'listings',listingId), { createdAt: serverTimestamp(), bumpedAt: serverTimestamp() });
+      localStorage.setItem(key, String(now));
+      alert('매물을 끌어올렸어요! 🔼\n목록 상단으로 이동했어요.');
+      if (window.loadListings) loadListings();
+    } catch(e) {
+      alert('끌어올리기 실패: ' + e.message);
+    }
+  };
+
+  // ════ 유료 부스트 안내 (고정 노출) ════
+  window.boostListing = function(listingId) {
+    window._boostTargetId = listingId;
+    if (confirm('🚀 부스트 (유료 고정 노출)\n\n$4.99/3일 — 매물을 목록 최상단에 고정하고 오렌지 픽 배지를 달아드려요.\n\n결제 안내를 받으시겠어요?')) {
+      alert('부스트 신청이 접수되었어요!\n\n결제 안내:\n💸 Zelle/Venmo: orangemarket.oc@gmail.com\n메모에 매물 제목을 적어주세요.\n입금 확인 후 즉시 적용됩니다. 🍊');
+    }
+  };
+
+  // ════ 예약 상태 Firebase 저장 ════
+  window.setReserveStatus = async function(reserved) {
+    var cu = window._currentUser || (window._auth && window._auth.currentUser);
+    var l = window._selectedListing;
+    // 판매자만 예약 상태 변경 가능 (구매자가 눌러도 화면 표시는 됨)
+    if (!cu || !l || !l.id) return;
+    if (String(l.id).indexOf('demo_') === 0 || String(l.id).indexOf('local_') === 0) return;
+    // 판매자 본인 매물일 때만 실제 저장
+    if (l.userId && l.userId !== cu.uid) return;
+    try {
+      await updateDoc(doc(db, 'listings', l.id), {
+        status: reserved ? 'reserved' : 'active'
+      });
+    } catch(e) { console.log('예약 상태 저장:', e.message); }
+  };
+
+  // ════════════════════════════════════════════════════════
+  // 💬 커뮤니티 조회 / 좋아요 / 댓글
+  // ════════════════════════════════════════════════════════
+
+  window.loadCommunity = async function() {
+    var container = document.getElementById('commListContainer');
+    if (!container) return;
+    container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">불러오는 중...</div>';
+    try {
+      var snap = await getDocs(query(collection(db,'community'), limit(50))).catch(function(){return {docs:[]};});
+      var posts = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); });
+      if (posts.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = '';
+      posts.forEach(function(p){ container.appendChild(_renderCommCard(p)); });
+    } catch(e) {
+      container.innerHTML = '';
+      console.log('커뮤니티 로드:', e.message);
+    }
+  };
+
+  function _timeAgo(seconds) {
+    if (!seconds) return '방금';
+    var diff = Math.floor(Date.now()/1000) - seconds;
+    if (diff < 60) return '방금';
+    if (diff < 3600) return Math.floor(diff/60) + '분 전';
+    if (diff < 86400) return Math.floor(diff/3600) + '시간 전';
+    return Math.floor(diff/86400) + '일 전';
+  }
+
+  function _renderCommCard(p) {
+    var catColors = { '수다':'#E8571A', '질문':'#1D5FA6', '정보':'#3A7D52', '모임':'#B8860B' };
+    var catKey = (p.category || '수다').replace(/\s.*/, '');
+    var color = catColors[catKey] || '#E8571A';
+    var card = document.createElement('div');
+    card.className = 'comm-card';
+    card.style.cssText = 'background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 14px';
+
+    var liked = (JSON.parse(localStorage.getItem('om_liked_posts')||'[]')).indexOf(p.id) >= 0;
+    var likeCount = p.likeCount || 0;
+
+    card.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+      + '<span style="font-size:11px;font-weight:700;color:' + color + ';background:' + color + '18;padding:3px 9px;border-radius:20px">' + catKey + '</span>'
+      + '<span style="font-size:11px;color:var(--muted)">' + _timeAgo(p.createdAt && p.createdAt.seconds) + '</span></div>'
+      + '<div style="font-size:14px;font-weight:700;color:#3E2510;margin-bottom:5px">' + (p.title||'') + '</div>'
+      + '<div style="font-size:13px;color:var(--mid);line-height:1.5;margin-bottom:10px">' + (p.body||'') + '</div>'
+      + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
+      + '<div style="width:24px;height:24px;border-radius:50%;background:var(--or-bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--or)">' + (p.nickname||'?').charAt(0) + '</div>'
+      + '<span style="font-size:12px;font-weight:600;color:var(--mid)">' + (p.nickname||'이웃') + '</span>'
+      + '<span style="font-size:11px;color:var(--muted)">· ' + (p.neighborhood||'OC') + '</span></div>';
+
+    // 좋아요 + 댓글 버튼 행
+    var footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;gap:16px;padding-top:10px;border-top:1px solid var(--line)';
+
+    var likeBtn = document.createElement('button');
+    likeBtn.style.cssText = 'display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;color:' + (liked ? 'var(--or)' : 'var(--muted)');
+    likeBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:17px;height:17px;fill:' + (liked?'var(--or)':'none') + ';stroke:' + (liked?'var(--or)':'var(--muted)') + ';stroke-width:2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>' + likeCount + '</span>';
+    likeBtn.onclick = function(){ _toggleLike(p.id, likeBtn); };
+
+    var cmtBtn = document.createElement('button');
+    cmtBtn.style.cssText = 'display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;color:var(--muted)';
+    cmtBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:17px;height:17px;fill:none;stroke:var(--muted);stroke-width:2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>' + (p.commentCount||0) + '</span>';
+    cmtBtn.onclick = function(){ _openComments(p); };
+
+    footer.appendChild(likeBtn);
+    footer.appendChild(cmtBtn);
+    card.appendChild(footer);
+    return card;
+  }
+
+  window._toggleLike = async function(postId, btn) {
+    var liked = JSON.parse(localStorage.getItem('om_liked_posts')||'[]');
+    var idx = liked.indexOf(postId);
+    var nowLiked = idx < 0;
+    if (nowLiked) liked.push(postId); else liked.splice(idx, 1);
+    localStorage.setItem('om_liked_posts', JSON.stringify(liked));
+    // 화면 즉시 갱신
+    var span = btn.querySelector('span');
+    var svg = btn.querySelector('svg');
+    var cnt = parseInt(span.textContent) || 0;
+    cnt = nowLiked ? cnt+1 : Math.max(0, cnt-1);
+    span.textContent = cnt;
+    btn.style.color = nowLiked ? 'var(--or)' : 'var(--muted)';
+    if (svg) { svg.style.fill = nowLiked ? 'var(--or)' : 'none'; svg.style.stroke = nowLiked ? 'var(--or)' : 'var(--muted)'; }
+    // Firebase 갱신
+    try {
+      var cu = window._currentUser || (window._auth && window._auth.currentUser);
+      if (cu && String(postId).indexOf('demo_')!==0) {
+        await updateDoc(doc(db,'community',postId), { likeCount: increment(nowLiked ? 1 : -1) }).catch(function(){});
+      }
+    } catch(e) {}
+  };
+
+  window._openComments = async function(post) {
+    var old = document.getElementById('om_sheet');
+    if (old) old.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'om_sheet';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:500;display:flex;flex-direction:column;justify-content:flex-end';
+    var bg = document.createElement('div');
+    bg.style.cssText = 'flex:1;background:rgba(0,0,0,.45)';
+    bg.addEventListener('click', function(){ overlay.remove(); });
+    var panel = document.createElement('div');
+    panel.style.cssText = 'background:#fff;border-radius:22px 22px 0 0;max-height:80vh;display:flex;flex-direction:column';
+    var header = document.createElement('div');
+    header.style.cssText = 'padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-shrink:0';
+    header.innerHTML = '<span style="font-size:16px;font-weight:800;color:#3E2510">댓글</span>';
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'background:none;border:none;font-size:18px;color:var(--muted);cursor:pointer';
+    closeBtn.addEventListener('click', function(){ overlay.remove(); });
+    header.appendChild(closeBtn);
+    var body = document.createElement('div');
+    body.id = 'commentBody';
+    body.style.cssText = 'overflow-y:auto;flex:1;padding:8px 0';
+    body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">불러오는 중...</div>';
+    // 입력창
+    var inputBar = document.createElement('div');
+    inputBar.style.cssText = 'display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);flex-shrink:0';
+    var input = document.createElement('input');
+    input.placeholder = '댓글을 입력하세요...';
+    input.style.cssText = 'flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:20px;font-size:14px;font-family:inherit';
+    var sendBtn = document.createElement('button');
+    sendBtn.textContent = '등록';
+    sendBtn.style.cssText = 'padding:10px 18px;background:var(--or);border:none;border-radius:20px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit';
+    var doSend = function(){
+      var txt = input.value.trim();
+      if (!txt) return;
+      input.value = '';
+      _addComment(post, txt, body);
+    };
+    sendBtn.onclick = doSend;
+    input.addEventListener('keydown', function(e){ if(e.key==='Enter') doSend(); });
+    inputBar.appendChild(input);
+    inputBar.appendChild(sendBtn);
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    panel.appendChild(inputBar);
+    overlay.appendChild(bg);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    _loadComments(post, body);
+  };
+
+  window._loadComments = async function(post, body) {
+    try {
+      var snap = await getDocs(query(collection(db,'community',post.id,'comments'), limit(50))).catch(function(){return {docs:[]};});
+      var comments = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .sort(function(a,b){ return ((a.createdAt&&a.createdAt.seconds)||0)-((b.createdAt&&b.createdAt.seconds)||0); });
+      if (comments.length === 0) {
+        body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--muted)"><div style="font-size:32px;margin-bottom:8px">💬</div><div style="font-size:13px">첫 댓글을 남겨보세요!</div></div>';
+        return;
+      }
+      body.innerHTML = '';
+      comments.forEach(function(c){ body.appendChild(_renderComment(c)); });
+    } catch(e) {
+      body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:13px">첫 댓글을 남겨보세요!</div>';
+    }
+  };
+
+  function _renderComment(c) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:10px;padding:12px 16px';
+    row.innerHTML =
+      '<div style="width:32px;height:32px;border-radius:50%;background:var(--or-bg);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--or);flex-shrink:0">' + (c.nickname||'?').charAt(0) + '</div>'
+      + '<div style="flex:1"><div style="font-size:12px;font-weight:700;color:#3E2510">' + (c.nickname||'이웃') + '</div>'
+      + '<div style="font-size:13px;color:var(--mid);margin-top:2px;line-height:1.4">' + (c.text||'') + '</div></div>';
+    return row;
+  }
+
+  window._addComment = async function(post, text, body) {
+    var cu = window._currentUser || (window._auth && window._auth.currentUser);
+    var nickname = (window._userProfile && window._userProfile.nickname) || '이웃';
+    // 화면에 즉시 추가
+    if (body) {
+      var empty = body.querySelector('div[style*="text-align:center"]');
+      if (empty) body.innerHTML = '';
+      body.appendChild(_renderComment({ nickname: nickname, text: text }));
+      body.scrollTop = body.scrollHeight;
+    }
+    // Firebase 저장 (로그인 + 실제 게시글)
+    if (cu && String(post.id).indexOf('demo_')!==0) {
+      try {
+        await addDoc(collection(db,'community',post.id,'comments'), {
+          userId: cu.uid, nickname: nickname, text: text, createdAt: serverTimestamp()
+        });
+        await updateDoc(doc(db,'community',post.id), { commentCount: increment(1) }).catch(function(){});
+      } catch(e) { console.log('댓글 저장:', e.message); }
+    }
+  };
 </script>
 </head>
 <body>
@@ -2090,6 +2357,14 @@ window.searchListings = async function() {
       <button class="sch" onclick="selSub(this)">레슨 Lessons</button>
       <button class="sch" onclick="selSub(this)">기타 Other</button>
     </div></div>
+    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#FFF8F2,#FFEDE0);border:1px dashed var(--or-bd);margin:10px 14px;padding:11px 14px;border-radius:10px;cursor:pointer">
+      <div style="font-size:20px">🚀</div>
+      <div style="flex:1">
+        <div style="font-size:12.5px;font-weight:700;color:var(--or)">알바·레슨 상단 고정 노출하기</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">유료 광고로 더 많은 이웃에게 노출하세요 · 탭하여 등급 보기</div>
+      </div>
+      <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--or);stroke-width:2;fill:none"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
     <!-- 공고 버튼 + 필터 -->
     <div style="background:var(--w);border-bottom:1px solid var(--line);display:flex;gap:8px;padding:9px 14px">
       <button onclick="showSc('job-write')" style="flex:1;padding:9px;background:var(--or);border:none;border-radius:8px;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">+ 알바 공고</button>
@@ -2132,7 +2407,15 @@ window.searchListings = async function() {
         <button class="sch" onclick="selSub(this)">중고차 Used Cars</button>
       </div>
     </div>
-    <div class="bnrwrap"><div class="md-bnr"><div class="md-ic"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div><div class="md-sp">&#127818; 오렌지 픽</div><div class="md-ttl">얼바인 이번주 신규 매물</div><div class="md-sub">직거래 위주 &#183; 42건 신규</div></div></div></div>
+    <div class="bnrwrap"><div class="md-bnr"><div class="md-ic"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div><div class="md-sp">&#127818; 오렌지 픽</div><div class="md-ttl">얼바인 이번주 신규 매물</div><div class="md-sub">직거래 위주 &#183; 42건 신규</div></div>
+    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#FFF8F2,#FFEDE0);border:1px dashed var(--or-bd);margin:10px 14px;padding:11px 14px;border-radius:10px;cursor:pointer">
+      <div style="font-size:20px">🚀</div>
+      <div style="flex:1">
+        <div style="font-size:12.5px;font-weight:700;color:var(--or)">부동산·차 상단 고정 노출하기</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">유료 광고로 더 많은 이웃에게 노출하세요 · 탭하여 등급 보기</div>
+      </div>
+      <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--or);stroke-width:2;fill:none"><polyline points="9 18 15 12 9 6"/></svg>
+    </div></div></div>
     <div class="sech"><div class="secht">부동산 &amp; 중고차 Real Estate &amp; Cars<small>직거래 위주</small></div><div class="secha">지도보기</div></div>
 
     <div class="rcard">
@@ -2208,6 +2491,14 @@ window.searchListings = async function() {
 
     <!-- SPONSORED business -->
     <div class="sech"><div class="secht">업체 &amp; 맛집 Business &amp; Eats<small>· 스폰서</small></div></div>
+    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#FFF8F2,#FFEDE0);border:1px dashed var(--or-bd);margin:10px 14px;padding:11px 14px;border-radius:10px;cursor:pointer">
+      <div style="font-size:20px">🚀</div>
+      <div style="flex:1">
+        <div style="font-size:12.5px;font-weight:700;color:var(--or)">업체·맛집 상단 고정 노출하기</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">유료 광고로 더 많은 이웃에게 노출하세요 · 탭하여 등급 보기</div>
+      </div>
+      <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--or);stroke-width:2;fill:none"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
     <div class="bizcard" onclick="openSponsor('hmart')">
       <div class="biz-hero th-biz1">
         <svg viewBox="0 0 24 24" style="width:44px;height:44px;fill:none;stroke:#E67E22;stroke-width:1.2;stroke-linecap:round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
@@ -2273,6 +2564,9 @@ window.searchListings = async function() {
       </div>
     </div>
     <div class="sech"><div class="secht">커뮤니티 Community<small>· 수다방 &amp; 모임</small></div><div class="secha" onclick="showSc('comm-write')" style="cursor:pointer">+ 글쓰기</div></div>
+
+    <div id="commListContainer"></div>
+
 
     <div class="comm-card">
       <div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div>
@@ -3760,12 +4054,15 @@ function switchMain(btn,pid){
   btn.classList.add('on');
   document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
   document.getElementById(pid).classList.add('on');
+  if(pid==='p-comm' && window.loadCommunity) window.loadCommunity();
+  if(pid==='p-market' && window.loadListings) window.loadListings();
 }
 function switchMainById(pid){
   var ids=['p-market','p-jobs','p-realty','p-biz','p-comm','p-donate'];
   document.querySelectorAll('.mtab').forEach(function(t,i){t.classList.toggle('on',ids[i]===pid);});
   document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
   document.getElementById(pid).classList.add('on');
+  if(pid==='p-comm' && window.loadCommunity) window.loadCommunity();
 }
 function selSub(el){
   var par=el.parentElement;
@@ -3954,20 +4251,26 @@ function toggleReserve(btn){
     btn.style.background='var(--or)';
     btn.style.color='#fff';
     btn.style.borderColor='var(--or)';
-    // Add reserved message to chat
     var list=document.getElementById('msgList');
-    var d=document.createElement('div');d.className='msg me';
-    d.innerHTML='<div><div class="bbl" style="background:var(--or)">예약 완료했습니다! 거래 시간과 장소를 조율해요 &#127818;</div></div><div class="mt">방금</div>';
-    list.appendChild(d);list.scrollTop=list.scrollHeight;
-    // Update item bar
+    if(list){
+      var d=document.createElement('div');d.className='msg me';
+      d.style.cssText='display:flex;justify-content:flex-end;margin:8px 0';
+      d.innerHTML='<div style="background:var(--or);color:#fff;padding:9px 13px;border-radius:16px 16px 4px 16px;max-width:75%;font-size:14px">예약 완료했습니다! 거래 시간과 장소를 조율해요 &#127818;</div>';
+      list.appendChild(d);list.scrollTop=list.scrollHeight;
+    }
     var p=document.getElementById('chatPrice');
-    if(p)p.innerHTML+=' <span style="font-size:10px;font-weight:700;color:var(--w);background:var(--or);padding:2px 7px;border-radius:20px;margin-left:4px">예약중</span>';
+    if(p && p.innerHTML.indexOf('예약중')<0)p.innerHTML+=' <span style="font-size:10px;font-weight:700;color:var(--w);background:var(--or);padding:2px 7px;border-radius:20px;margin-left:4px">예약중</span>';
+    // Firebase에 매물 상태 저장
+    if(window.setReserveStatus)window.setReserveStatus(true);
   } else {
     btn.dataset.reserved='false';
     btn.textContent='예약하기';
     btn.style.background='none';
     btn.style.color='var(--or)';
     btn.style.borderColor='var(--or)';
+    var p2=document.getElementById('chatPrice');
+    if(p2){var sp=p2.querySelector('span');if(sp)sp.remove();}
+    if(window.setReserveStatus)window.setReserveStatus(false);
   }
 }
 function handleFab(){
@@ -4093,12 +4396,15 @@ function switchMain(btn,pid){
   btn.classList.add('on');
   document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
   document.getElementById(pid).classList.add('on');
+  if(pid==='p-comm' && window.loadCommunity) window.loadCommunity();
+  if(pid==='p-market' && window.loadListings) window.loadListings();
 }
 function switchMainById(pid){
   var ids=['p-market','p-jobs','p-realty','p-biz','p-comm','p-donate'];
   document.querySelectorAll('.mtab').forEach(function(t,i){t.classList.toggle('on',ids[i]===pid);});
   document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
   document.getElementById(pid).classList.add('on');
+  if(pid==='p-comm' && window.loadCommunity) window.loadCommunity();
 }
 function selSub(el){
   var par=el.parentElement;
@@ -4287,20 +4593,26 @@ function toggleReserve(btn){
     btn.style.background='var(--or)';
     btn.style.color='#fff';
     btn.style.borderColor='var(--or)';
-    // Add reserved message to chat
     var list=document.getElementById('msgList');
-    var d=document.createElement('div');d.className='msg me';
-    d.innerHTML='<div><div class="bbl" style="background:var(--or)">예약 완료했습니다! 거래 시간과 장소를 조율해요 &#127818;</div></div><div class="mt">방금</div>';
-    list.appendChild(d);list.scrollTop=list.scrollHeight;
-    // Update item bar
+    if(list){
+      var d=document.createElement('div');d.className='msg me';
+      d.style.cssText='display:flex;justify-content:flex-end;margin:8px 0';
+      d.innerHTML='<div style="background:var(--or);color:#fff;padding:9px 13px;border-radius:16px 16px 4px 16px;max-width:75%;font-size:14px">예약 완료했습니다! 거래 시간과 장소를 조율해요 &#127818;</div>';
+      list.appendChild(d);list.scrollTop=list.scrollHeight;
+    }
     var p=document.getElementById('chatPrice');
-    if(p)p.innerHTML+=' <span style="font-size:10px;font-weight:700;color:var(--w);background:var(--or);padding:2px 7px;border-radius:20px;margin-left:4px">예약중</span>';
+    if(p && p.innerHTML.indexOf('예약중')<0)p.innerHTML+=' <span style="font-size:10px;font-weight:700;color:var(--w);background:var(--or);padding:2px 7px;border-radius:20px;margin-left:4px">예약중</span>';
+    // Firebase에 매물 상태 저장
+    if(window.setReserveStatus)window.setReserveStatus(true);
   } else {
     btn.dataset.reserved='false';
     btn.textContent='예약하기';
     btn.style.background='none';
     btn.style.color='var(--or)';
     btn.style.borderColor='var(--or)';
+    var p2=document.getElementById('chatPrice');
+    if(p2){var sp=p2.querySelector('span');if(sp)sp.remove();}
+    if(window.setReserveStatus)window.setReserveStatus(false);
   }
 }
 function handleFab(){
