@@ -795,8 +795,18 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     const nickname = ((inputs[1] && inputs[1].value) || (inputs[0] && inputs[0].value) || '').trim();
     const realName  = ((inputs[0] && inputs[0].value) || '').trim();
     if (!nickname) { alert('닉네임을 입력해주세요.'); return; }
+    if (nickname.length < 2) { alert('닉네임은 2자 이상이어야 해요.'); return; }
     const uid = window._newUid || auth.currentUser && auth.currentUser.uid;
     if (!uid) { alert('다시 로그인해주세요.'); return; }
+    // 닉네임 중복 체크
+    try {
+      const dupQ = query(collection(db,'users'), where('nickname','==',nickname), limit(1));
+      const dupSnap = await getDocs(dupQ).catch(function(){return {empty:true};});
+      if (!dupSnap.empty) {
+        alert('이미 사용 중인 닉네임이에요. 😢\n다른 닉네임을 입력해주세요.');
+        return;
+      }
+    } catch(e) { console.log('닉네임 체크:', e.message); }
     const profile = {
       uid, nickname, realName,
       phone: auth.currentUser && auth.currentUser.phoneNumber || ''||'',
@@ -1677,6 +1687,134 @@ window.searchListings = async function() {
     reader.readAsDataURL(input.files[0]);
     input.value = '';
   };
+
+  // ════ 부동산 사진/등록 ════
+  function _compressPhoto(input, arrName, previewId) {
+    if (!input.files || !input.files[0]) return;
+    if (!window[arrName]) window[arrName] = [];
+    if (window[arrName].length >= 3) { alert('사진은 최대 3장이에요.'); return; }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var MAX = 600, w = img.width, h = img.height;
+        if (w > h) { h = Math.round(h*MAX/w); w = MAX; } else { w = Math.round(w*MAX/h); h = MAX; }
+        w = Math.max(w,1); h = Math.max(h,1);
+        var cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        var data = cv.toDataURL('image/jpeg', 0.65);
+        window[arrName].push(data);
+        var pv = document.getElementById(previewId);
+        if (pv) {
+          var wrap = document.createElement('div');
+          wrap.style.cssText='position:relative;display:inline-block';
+          var t = document.createElement('img'); t.src=data;
+          t.style.cssText='width:72px;height:72px;object-fit:cover;border-radius:8px;display:block';
+          var d = document.createElement('button'); d.textContent='×';
+          d.style.cssText='position:absolute;top:-5px;right:-5px;width:20px;height:20px;border-radius:50%;background:#C0392B;color:#fff;border:none;font-size:14px;cursor:pointer;line-height:1';
+          d.onclick=function(){ var i=Array.from(pv.children).indexOf(wrap); window[arrName].splice(i,1); wrap.remove(); };
+          wrap.appendChild(t); wrap.appendChild(d); pv.appendChild(wrap);
+        }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(input.files[0]);
+    input.value = '';
+  }
+
+  window.addRealtyPhoto = function(input) { _compressPhoto(input, '_realtyPhotos', 'realtyPhotoPreview'); };
+  window.addCommPhoto   = function(input) { _compressPhoto(input, '_commPhotos', 'commPhotoPreview'); };
+
+  window.submitRealty = async function() {
+    var title = (document.getElementById('realtyTitle')||{}).value || '';
+    var price = (document.getElementById('realtyPrice')||{}).value || '0';
+    var desc  = (document.getElementById('realtyDesc')||{}).value || '';
+    var catEl = document.querySelector('#sc-realty-write .catc.on');
+    var cat = catEl ? catEl.textContent.trim() : '렌트';
+    var boost = (document.getElementById('realtyBoost')||{}).checked || false;
+    title = title.trim();
+    if (!title) { alert('제목을 입력해주세요.'); return; }
+    var cu = window._currentUser || (window._auth && window._auth.currentUser);
+    var photos = window._realtyPhotos || [];
+    if (!cu) {
+      alert('등록되었습니다! 🍊' + (boost ? '\n(상단노출은 결제 후 적용됩니다)' : '') + '\n(로그인하면 다른 사람에게도 보여요)');
+      window._realtyPhotos = []; var pv=document.getElementById('realtyPhotoPreview'); if(pv)pv.innerHTML='';
+      showSc('home'); setNav('home'); return;
+    }
+    try {
+      await addDoc(collection(db,'realty'), {
+        userId: cu.uid,
+        sellerNickname: (window._userProfile && window._userProfile.nickname) || '이웃',
+        title: title, price: price?Number(price):0, isFree: false,
+        description: desc.trim(), category: cat,
+        neighborhood: (window._userProfile && window._userProfile.neighborhood) || 'OC',
+        status: 'active', isBoost: boost, viewCount: 0,
+        images: photos, createdAt: serverTimestamp()
+      });
+      window._realtyPhotos = []; var pv2=document.getElementById('realtyPhotoPreview'); if(pv2)pv2.innerHTML='';
+      alert('부동산·차 매물이 등록되었습니다! 🍊' + (boost ? '\n상단노출 결제 안내를 보내드릴게요.' : ''));
+      showSc('home'); setNav('home');
+    } catch(e) { alert('등록 실패: ' + e.message); }
+  };
+
+  // ════ 커뮤니티 게시 ════
+  window.submitCommPost = async function() {
+    var title = (document.getElementById('commTitle')||{}).value || '';
+    var body  = (document.getElementById('commBody')||{}).value || '';
+    var catEl = document.querySelector('#sc-comm-write .catc.on');
+    var cat = catEl ? catEl.textContent.trim() : '수다';
+    title = title.trim(); body = body.trim();
+    if (!title) { alert('제목을 입력해주세요.'); return; }
+    if (!body)  { alert('내용을 입력해주세요.'); return; }
+    var cu = window._currentUser || (window._auth && window._auth.currentUser);
+    var photos = window._commPhotos || [];
+    var nickname = (window._userProfile && window._userProfile.nickname) || '이웃';
+    var area = (window._userProfile && window._userProfile.neighborhood) || 'OC';
+    if (!cu) {
+      alert('게시되었습니다! 🍊\n(로그인하면 다른 사람에게도 보여요)');
+      window._commPhotos = []; var pv=document.getElementById('commPhotoPreview'); if(pv)pv.innerHTML='';
+      showSc('home'); setNav('home'); return;
+    }
+    try {
+      await addDoc(collection(db,'community'), {
+        userId: cu.uid, nickname: nickname, neighborhood: area,
+        category: cat, title: title, body: body, images: photos,
+        likeCount: 0, commentCount: 0, createdAt: serverTimestamp()
+      });
+      window._commPhotos = []; var pv2=document.getElementById('commPhotoPreview'); if(pv2)pv2.innerHTML='';
+      alert('게시글이 등록되었습니다! 🍊');
+      showSc('home'); setNav('home');
+    } catch(e) { alert('게시 실패: ' + e.message); }
+  };
+
+  // ════ 닉네임 중복 체크 ════
+  window.checkNicknameAvailable = async function(nickname) {
+    if (!nickname) return false;
+    try {
+      var q = query(collection(db,'users'), where('nickname','==',nickname), limit(1));
+      var snap = await getDocs(q).catch(function(){return {empty:true};});
+      return snap.empty;
+    } catch(e) { return true; }
+  };
+
+  // 부동산 boost 토글 스위치
+  window.addEventListener('load', function() {
+    var cb = document.getElementById('realtyBoost');
+    var sl = document.getElementById('realtyBoostSlider');
+    if (cb && sl) {
+      cb.addEventListener('change', function() {
+        if (cb.checked) {
+          sl.style.background = 'var(--or)';
+          sl.innerHTML = '<span style="position:absolute;top:2px;left:22px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s"></span>';
+        } else {
+          sl.style.background = '#ccc';
+          sl.innerHTML = '<span style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s"></span>';
+        }
+      });
+      // 초기 핸들
+      sl.innerHTML = '<span style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s"></span>';
+    }
+  });
 </script>
 </head>
 <body>
@@ -2029,7 +2167,7 @@ window.searchListings = async function() {
         <button class="sch" onclick="selSub(this)">모임 Gathering</button>
       </div>
     </div>
-    <div class="sech"><div class="secht">커뮤니티 Community<small>· 수다방 &amp; 모임</small></div><div class="secha">+ 글쓰기</div></div>
+    <div class="sech"><div class="secht">커뮤니티 Community<small>· 수다방 &amp; 모임</small></div><div class="secha" onclick="showSc('comm-write')" style="cursor:pointer">+ 글쓰기</div></div>
 
     <div class="comm-card">
       <div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div>
@@ -2148,6 +2286,90 @@ window.searchListings = async function() {
 </div>
 
 <!-- ══ 알바 공고 쓰기 ══ -->
+<div class="sc" id="sc-realty-write">
+  <div class="dhead">
+    <button class="bk" onclick="showSc('home');setNav('home')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <div class="dhead-t">부동산·차 등록 Real Estate / Car</div>
+  </div>
+  <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--w);padding:18px">
+    <div class="wsec">사진 (최대 3장 · 무료)</div>
+    <div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:5px">
+      <label class="phbox" style="cursor:pointer;position:relative;overflow:hidden">
+        <input type="file" accept="image/*" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" onchange="addRealtyPhoto(this)">
+        <svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span style="pointer-events:none">추가</span>
+      </label>
+      <div id="realtyPhotoPreview" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+    <div class="wsep"></div>
+    <div class="wsec">유형</div>
+    <div class="catgrid">
+      <button class="catc on" onclick="selCat(this)">렌트 Rent</button>
+      <button class="catc" onclick="selCat(this)">룸메이트 Roommate</button>
+      <button class="catc" onclick="selCat(this)">매매 Sale</button>
+      <button class="catc" onclick="selCat(this)">중고차 Used Car</button>
+      <button class="catc" onclick="selCat(this)">서브렛 Sublet</button>
+      <button class="catc" onclick="selCat(this)">기타 Other</button>
+    </div>
+    <div class="wsep"></div>
+    <div class="wsec">제목</div>
+    <input id="realtyTitle" class="winp" placeholder="예: 얼바인 2베드 콘도 렌트 / 2BR Condo in Irvine">
+    <div class="wsec" style="margin-top:14px">가격 ($)</div>
+    <input id="realtyPrice" class="winp" type="number" placeholder="$ 월세 또는 매매가">
+    <div class="wsec" style="margin-top:14px">상세 설명</div>
+    <textarea id="realtyDesc" class="wta" placeholder="위치, 방/욕실 수, 입주 가능일, 옵션 등&#10;Location, beds/baths, move-in date..."></textarea>
+    <div class="wsep"></div>
+    <!-- 유료 상단노출 옵션 -->
+    <div style="background:linear-gradient(135deg,#FFF8F2,#FFEDE0);border:1.5px solid var(--or-bd);border-radius:var(--rl);padding:14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:700;color:var(--ink)">🚀 상단 노출 (선택)</div>
+        <label style="position:relative;display:inline-block;width:44px;height:24px">
+          <input type="checkbox" id="realtyBoost" style="opacity:0;width:0;height:0">
+          <span id="realtyBoostSlider" style="position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:24px;transition:.2s"></span>
+        </label>
+      </div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.6">$9.99/주 — 부동산·차 목록 최상단 7일 고정 노출. 더 빨리 거래하세요!</div>
+    </div>
+    <button class="wsub" onclick="submitRealty()">등록하기 Post Listing</button>
+  </div>
+</div>
+
+<div class="sc" id="sc-comm-write">
+  <div class="dhead">
+    <button class="bk" onclick="showSc('home');setNav('home')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <div class="dhead-t">글쓰기 New Post</div>
+  </div>
+  <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--w);padding:18px">
+    <div class="wsec">카테고리</div>
+    <div class="catgrid">
+      <button class="catc on" onclick="selCat(this)">수다 Chat</button>
+      <button class="catc" onclick="selCat(this)">질문 Q&amp;A</button>
+      <button class="catc" onclick="selCat(this)">정보 Info</button>
+      <button class="catc" onclick="selCat(this)">모임 Gathering</button>
+    </div>
+    <div class="wsep"></div>
+    <div class="wsec">제목</div>
+    <input id="commTitle" class="winp" placeholder="제목을 입력하세요">
+    <div class="wsec" style="margin-top:14px">내용</div>
+    <textarea id="commBody" class="wta" style="min-height:140px" placeholder="이웃들과 나누고 싶은 이야기를 적어주세요"></textarea>
+    <div class="wsep"></div>
+    <div class="wsec">사진 (선택 · 최대 3장)</div>
+    <div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:5px">
+      <label class="phbox" style="cursor:pointer;position:relative;overflow:hidden">
+        <input type="file" accept="image/*" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" onchange="addCommPhoto(this)">
+        <svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span style="pointer-events:none">추가</span>
+      </label>
+      <div id="commPhotoPreview" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin:10px 0 16px;font-size:12px;color:var(--muted)">
+      <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--muted);stroke-width:2;fill:none"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <span id="commArea">동네 위치가 함께 표시됩니다</span>
+    </div>
+    <button class="wsub" onclick="submitCommPost()">게시하기 Post</button>
+  </div>
+</div>
+
 <div class="sc" id="sc-job-write">
   <div class="dhead">
     <button class="bk" onclick="showSc('home')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
@@ -2307,9 +2529,7 @@ window.searchListings = async function() {
     <div style="height:11px"></div>
     <div class="wsec">업체 소개</div>
     <textarea class="wta" placeholder="업체 소개, 특장점, 주요 메뉴/서비스를 적어주세요."></textarea>
-    <div class="wsec">쿠폰 등록 Coupon (무료 1개)</div>
-    <input class="winp" placeholder="예: 첫 방문 10% 할인 / First visit 10% off">
-    <!-- 유료 광고 업셀 -->
+    <div class="wsep"></div>
     <div style="background:linear-gradient(135deg,#2C1A0E,#3E2510);border-radius:var(--rl);padding:16px;margin-bottom:14px">
       <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px">더 많이 노출하고 싶다면</div>
       <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:4px">스폰서 광고로 업그레이드</div>
@@ -3412,7 +3632,7 @@ window.searchListings = async function() {
 </div>
 </div>
 <script>
-var HIDENAV=['sc-detail','sc-chat','sc-write','sc-sponsor','sc-review','sc-search','sc-notif','sc-job-write','sc-lesson-write','sc-biz-write','sc-funding','sc-auth','sc-payment','sc-payment-success','sc-ad-info','sc-chatlist','sc-mylistings','sc-userprofile','sc-editlisting','sc-terms','sc-support'];
+var HIDENAV=['sc-detail','sc-chat','sc-write','sc-sponsor','sc-review','sc-search','sc-notif','sc-job-write','sc-lesson-write','sc-biz-write','sc-funding','sc-auth','sc-payment','sc-payment-success','sc-ad-info','sc-chatlist','sc-mylistings','sc-userprofile','sc-editlisting','sc-terms','sc-support','sc-realty-write','sc-comm-write'];
 var boostOpen=false,boostCnt=0,boostMax=5,curPrice=1200;
 var orgScores=[0,0,0,0,0];
 
@@ -3645,15 +3865,15 @@ function toggleReserve(btn){
 }
 function handleFab(){
   // Smart FAB — routes based on active tab
-  var bizPanel=document.getElementById('p-biz');
-  var jobPanel=document.getElementById('p-jobs');
-  if(bizPanel && bizPanel.classList.contains('on')){
-    showSc('biz-write');
-  } else if(jobPanel && jobPanel.classList.contains('on')){
-    showSc('job-write');
-  } else {
-    showSc('write');
-  }
+  var biz=document.getElementById('p-biz');
+  var job=document.getElementById('p-jobs');
+  var realty=document.getElementById('p-realty');
+  var comm=document.getElementById('p-comm');
+  if(biz && biz.classList.contains('on')){ showSc('biz-write'); }
+  else if(job && job.classList.contains('on')){ showSc('job-write'); }
+  else if(realty && realty.classList.contains('on')){ showSc('realty-write'); }
+  else if(comm && comm.classList.contains('on')){ showSc('comm-write'); }
+  else { showSc('write'); }
 }
 
 function switchAuth(tab){
@@ -3745,7 +3965,7 @@ function closeModal(){document.getElementById('modalBg').classList.remove('open'
     images:[], status:'active'
   };
   showSc('detail');
-}var HIDENAV=['sc-detail','sc-chat','sc-write','sc-sponsor','sc-review','sc-search','sc-notif','sc-job-write','sc-lesson-write','sc-biz-write','sc-funding','sc-auth','sc-payment','sc-payment-success','sc-ad-info','sc-chatlist','sc-mylistings','sc-userprofile','sc-editlisting','sc-terms','sc-support'];
+}var HIDENAV=['sc-detail','sc-chat','sc-write','sc-sponsor','sc-review','sc-search','sc-notif','sc-job-write','sc-lesson-write','sc-biz-write','sc-funding','sc-auth','sc-payment','sc-payment-success','sc-ad-info','sc-chatlist','sc-mylistings','sc-userprofile','sc-editlisting','sc-terms','sc-support','sc-realty-write','sc-comm-write'];
 var boostOpen=false,boostCnt=0,boostMax=5,curPrice=1200;
 var orgScores=[0,0,0,0,0];
 
@@ -3978,15 +4198,15 @@ function toggleReserve(btn){
 }
 function handleFab(){
   // Smart FAB — routes based on active tab
-  var bizPanel=document.getElementById('p-biz');
-  var jobPanel=document.getElementById('p-jobs');
-  if(bizPanel && bizPanel.classList.contains('on')){
-    showSc('biz-write');
-  } else if(jobPanel && jobPanel.classList.contains('on')){
-    showSc('job-write');
-  } else {
-    showSc('write');
-  }
+  var biz=document.getElementById('p-biz');
+  var job=document.getElementById('p-jobs');
+  var realty=document.getElementById('p-realty');
+  var comm=document.getElementById('p-comm');
+  if(biz && biz.classList.contains('on')){ showSc('biz-write'); }
+  else if(job && job.classList.contains('on')){ showSc('job-write'); }
+  else if(realty && realty.classList.contains('on')){ showSc('realty-write'); }
+  else if(comm && comm.classList.contains('on')){ showSc('comm-write'); }
+  else { showSc('write'); }
 }
 
 function switchAuth(tab){
