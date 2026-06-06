@@ -1253,7 +1253,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
     if (!container) return;
     const cu3 = window._currentUser || (window._auth && window._auth.currentUser);
     if (!cu3) {
-      container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">💬</div><div style="font-size:14px;font-weight:700;color:var(--mid);margin-bottom:6px">로그인이 필요해요</div><div style="font-size:12px">프로필 탭에서 로그인하세요</div></div>';
+      container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:14px;font-weight:700;color:var(--mid);margin-bottom:6px">로그인이 필요해요</div><div style="font-size:12px">프로필 탭에서 로그인하세요</div></div>';
       return;
     }
     container.innerHTML = '<div style="text-align:center;padding:50px;color:var(--muted)">불러오는 중...</div>';
@@ -1271,7 +1271,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         return ((b.lastMessageAt&&b.lastMessageAt.seconds)||0) - ((a.lastMessageAt&&a.lastMessageAt.seconds)||0);
       });
       if (chats.length === 0) {
-        container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">💬</div><div style="font-size:14px;font-weight:700;color:var(--mid);margin-bottom:6px">채팅 내역이 없습니다</div><div style="font-size:12px">매물에서 채팅으로 문의해보세요</div></div>';
+        container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:14px;font-weight:700;color:var(--mid);margin-bottom:6px">채팅 내역이 없습니다</div><div style="font-size:12px">매물에서 채팅으로 문의해보세요</div></div>';
         return;
       }
       container.innerHTML = '';
@@ -1295,7 +1295,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       });
     } catch(e) {
       console.error('채팅목록 오류:', e.message);
-      container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">💬</div><div style="font-size:14px;font-weight:700;color:var(--mid)">채팅 내역이 없습니다</div></div>';
+      container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:14px;font-weight:700;color:var(--mid)">채팅 내역이 없습니다</div></div>';
     }
   };
 
@@ -1507,8 +1507,8 @@ window.searchListings = async function() {
         status: window._editStatus || 'active'
       });
       alert('수정 완료! 🍊');
-      showSc('mylistings');
-      if (window.loadMyListings) loadMyListings();
+      showSc('home'); setNav('home');
+      if (window.showSalesHistory) showSalesHistory();
     } catch(e) {
       alert('수정 실패: ' + e.message);
     }
@@ -1525,7 +1525,7 @@ window.searchListings = async function() {
     localStorage.setItem(key, JSON.stringify(saved));
   };
 
-  function _showSheet(title, itemsPromise) {
+  window._showSheet = function(title, itemsPromise) {
     var old = document.getElementById('om_sheet');
     if (old) old.remove();
     var overlay = document.createElement('div');
@@ -1566,7 +1566,7 @@ window.searchListings = async function() {
     Promise.resolve(itemsPromise).then(function(rows){
       body.innerHTML = '';
       if (!rows || rows.length === 0) {
-        body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:40px;margin-bottom:12px">📭</div><div style="font-size:14px;font-weight:700;color:var(--mid)">내역이 없습니다</div></div>';
+        body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:14px;font-weight:700;color:var(--mid)">내역이 없습니다</div></div>';
       } else {
         rows.forEach(function(r){ body.appendChild(r); });
       }
@@ -1595,7 +1595,7 @@ window.searchListings = async function() {
         return row;
       });
     })();
-    _showSheet('관심 목록 ❤️', p);
+    window._showSheet('관심 목록', p);
   };
 
   window.showPurchaseHistory = async function() {
@@ -1617,7 +1617,7 @@ window.searchListings = async function() {
         });
       } catch(e){ return []; }
     })();
-    _showSheet('나의 구매내역 🛍️', p);
+    window._showSheet('구매 내역', p);
   };
 
   window.showSalesHistory = async function() {
@@ -1646,24 +1646,28 @@ window.searchListings = async function() {
           var btnRow = document.createElement('div');
           btnRow.style.cssText='display:flex;gap:6px;padding:0 16px 12px';
           var bumpBtn = document.createElement('button');
-          bumpBtn.textContent = '🔼 끌올';
+          bumpBtn.textContent = 'Bump';
           bumpBtn.style.cssText='flex:1;padding:7px;background:var(--ivory);border:1px solid var(--line);border-radius:8px;color:var(--mid);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit';
           bumpBtn.onclick = function(e){ e.stopPropagation(); window.bumpListing(l.id); };
           var boostBtn = document.createElement('button');
-          boostBtn.textContent = '🚀 부스트';
+          boostBtn.textContent = 'Boost';
           boostBtn.style.cssText='flex:1;padding:7px;background:var(--or-bg);border:1px solid var(--or-bd);border-radius:8px;color:var(--or);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit';
           boostBtn.onclick = function(e){ e.stopPropagation(); window.boostListing(l.id); };
           var editBtn = document.createElement('button');
-          editBtn.textContent = '✏️ 수정';
+          editBtn.textContent = 'Edit';
           editBtn.style.cssText='flex:1;padding:7px;background:var(--ivory);border:1px solid var(--line);border-radius:8px;color:var(--mid);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit';
           editBtn.onclick = function(e){ e.stopPropagation(); var sh=document.getElementById('om_sheet'); if(sh)sh.remove(); if(window.editListing)window.editListing(l); };
-          btnRow.appendChild(bumpBtn); btnRow.appendChild(boostBtn); btnRow.appendChild(editBtn);
+          var delBtn = document.createElement('button');
+          delBtn.textContent = 'Delete';
+          delBtn.style.cssText='flex:1;padding:7px;background:var(--red-bg,#FDF0EE);border:1px solid #E8C0BA;border-radius:8px;color:var(--red,#C0392B);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit';
+          delBtn.onclick = function(e){ e.stopPropagation(); if(window.deleteMyListing) window.deleteMyListing(l.id, wrap); };
+          btnRow.appendChild(bumpBtn); btnRow.appendChild(boostBtn); btnRow.appendChild(editBtn); btnRow.appendChild(delBtn);
           wrap.appendChild(row); wrap.appendChild(btnRow);
           return wrap;
         });
       } catch(e){ return []; }
     })();
-    _showSheet('나의 판매내역 📦', p);
+    window._showSheet('판매 내역', p);
   };
 
   // 업체 대표사진 첨부
@@ -1908,7 +1912,7 @@ window.searchListings = async function() {
       }
       return rows;
     })();
-    if (window._showSheet) { window._showSheet('차단 목록 🚫', p); }
+    if (window._showSheet) { window._showSheet('차단 목록', p); }
   };
 
   // ── 회원 탈퇴 (CCPA) ──
@@ -2027,43 +2031,83 @@ window.searchListings = async function() {
     var catColors = { '수다':'#E8571A', '질문':'#1D5FA6', '정보':'#3A7D52', '모임':'#B8860B' };
     var catKey = (p.category || '수다').replace(/\s.*/, '');
     var color = catColors[catKey] || '#E8571A';
-    var card = document.createElement('div');
-    card.className = 'comm-card';
-    card.style.cssText = 'background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 14px';
-
+    var row = document.createElement('div');
+    row.style.cssText = 'background:#fff;border-bottom:1px solid var(--line);padding:14px 16px;cursor:pointer';
     var liked = (JSON.parse(localStorage.getItem('om_liked_posts')||'[]')).indexOf(p.id) >= 0;
-    var likeCount = p.likeCount || 0;
-
-    card.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-      + '<span style="font-size:11px;font-weight:700;color:' + color + ';background:' + color + '18;padding:3px 9px;border-radius:20px">' + catKey + '</span>'
-      + '<span style="font-size:11px;color:var(--muted)">' + _timeAgo(p.createdAt && p.createdAt.seconds) + '</span></div>'
-      + '<div style="font-size:14px;font-weight:700;color:#3E2510;margin-bottom:5px">' + (p.title||'') + '</div>'
-      + '<div style="font-size:13px;color:var(--mid);line-height:1.5;margin-bottom:10px">' + (p.body||'') + '</div>'
-      + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
-      + '<div style="width:24px;height:24px;border-radius:50%;background:var(--or-bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--or)">' + (p.nickname||'?').charAt(0) + '</div>'
-      + '<span style="font-size:12px;font-weight:600;color:var(--mid)">' + (p.nickname||'이웃') + '</span>'
-      + '<span style="font-size:11px;color:var(--muted)">· ' + (p.neighborhood||'OC') + '</span></div>';
-
-    // 좋아요 + 댓글 버튼 행
-    var footer = document.createElement('div');
-    footer.style.cssText = 'display:flex;gap:16px;padding-top:10px;border-top:1px solid var(--line)';
-
-    var likeBtn = document.createElement('button');
-    likeBtn.style.cssText = 'display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;color:' + (liked ? 'var(--or)' : 'var(--muted)');
-    likeBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:17px;height:17px;fill:' + (liked?'var(--or)':'none') + ';stroke:' + (liked?'var(--or)':'var(--muted)') + ';stroke-width:2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>' + likeCount + '</span>';
-    likeBtn.onclick = function(){ _toggleLike(p.id, likeBtn); };
-
-    var cmtBtn = document.createElement('button');
-    cmtBtn.style.cssText = 'display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;color:var(--muted)';
-    cmtBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:17px;height:17px;fill:none;stroke:var(--muted);stroke-width:2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>' + (p.commentCount||0) + '</span>';
-    cmtBtn.onclick = function(){ _openComments(p); };
-
-    footer.appendChild(likeBtn);
-    footer.appendChild(cmtBtn);
-    card.appendChild(footer);
-    return card;
+    var thumb = (p.images && p.images[0])
+      ? '<div style="width:56px;height:56px;border-radius:8px;background-image:url(' + p.images[0] + ');background-size:cover;background-position:center;flex-shrink:0"></div>'
+      : '';
+    row.innerHTML =
+      '<div style="display:flex;gap:12px">'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+      + '<span style="font-size:11px;font-weight:700;color:' + color + '">' + catKey + '</span>'
+      + '<span style="font-size:11px;color:var(--muted)">· ' + _timeAgo(p.createdAt && p.createdAt.seconds) + '</span></div>'
+      + '<div style="font-size:14px;font-weight:600;color:#3E2510;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (p.title||'') + '</div>'
+      + '<div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (p.body||'') + '</div>'
+      + '<div style="display:flex;gap:14px;margin-top:6px;font-size:11px;color:var(--muted)">'
+      + '<span>' + (p.nickname||'이웃') + '</span>'
+      + '<span>♥ ' + (p.likeCount||0) + '</span>'
+      + '<span>댓글 ' + (p.commentCount||0) + '</span></div>'
+      + '</div>' + thumb + '</div>';
+    row.addEventListener('click', function(){ window._openPostDetail(p); });
+    return row;
   }
+
+  // 게시글 전체 보기
+  window._openPostDetail = function(p) {
+    var catColors = { '수다':'#E8571A', '질문':'#1D5FA6', '정보':'#3A7D52', '모임':'#B8860B' };
+    var catKey = (p.category || '수다').replace(/\s.*/, '');
+    var color = catColors[catKey] || '#E8571A';
+    var liked = (JSON.parse(localStorage.getItem('om_liked_posts')||'[]')).indexOf(p.id) >= 0;
+
+    var imgs = '';
+    if (p.images && p.images.length) {
+      imgs = '<div style="display:flex;flex-direction:column;gap:8px;margin:14px 0">';
+      p.images.forEach(function(src){
+        imgs += '<img src="' + src + '" style="width:100%;border-radius:10px;display:block">';
+      });
+      imgs += '</div>';
+    }
+
+    var bodyHtml =
+      '<div style="padding:18px 16px">'
+      + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
+      + '<span style="font-size:12px;font-weight:700;color:' + color + ';background:' + color + '18;padding:3px 10px;border-radius:20px">' + catKey + '</span>'
+      + '<span style="font-size:12px;color:var(--muted)">· ' + _timeAgo(p.createdAt && p.createdAt.seconds) + '</span></div>'
+      + '<div style="font-size:18px;font-weight:800;color:#3E2510;margin-bottom:10px">' + (p.title||'') + '</div>'
+      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
+      + '<div style="width:32px;height:32px;border-radius:50%;background:var(--or-bg);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--or)">' + (p.nickname||'?').charAt(0) + '</div>'
+      + '<div><div style="font-size:13px;font-weight:600;color:#3E2510">' + (p.nickname||'이웃') + '</div>'
+      + '<div style="font-size:11px;color:var(--muted)">' + (p.neighborhood||'OC') + '</div></div></div>'
+      + '<div style="font-size:15px;color:var(--ink);line-height:1.7">' + (p.body||'') + '</div>'
+      + imgs + '</div>';
+
+    var p2 = Promise.resolve([]);
+    window._showSheet('', p2);
+    setTimeout(function(){
+      var sheet = document.getElementById('om_sheet');
+      if (!sheet) return;
+      var body = sheet.querySelector('div[style*="overflow-y:auto"]');
+      if (body) {
+        body.innerHTML = bodyHtml;
+        // 좋아요/댓글 버튼
+        var footer = document.createElement('div');
+        footer.style.cssText = 'display:flex;gap:16px;padding:14px 16px;border-top:1px solid var(--line)';
+        var likeBtn = document.createElement('button');
+        likeBtn.style.cssText = 'display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:' + (liked?'var(--or)':'var(--muted)');
+        likeBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:' + (liked?'var(--or)':'none') + ';stroke:' + (liked?'var(--or)':'var(--muted)') + ';stroke-width:2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>' + (p.likeCount||0) + '</span>';
+        likeBtn.onclick = function(){ window._toggleLike(p.id, likeBtn); };
+        var cmtBtn = document.createElement('button');
+        cmtBtn.style.cssText = 'display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:var(--muted)';
+        cmtBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:var(--muted);stroke-width:2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>댓글 ' + (p.commentCount||0) + '</span>';
+        cmtBtn.onclick = function(){ window._openComments(p); };
+        footer.appendChild(likeBtn);
+        footer.appendChild(cmtBtn);
+        body.appendChild(footer);
+      }
+    }, 50);
+  };
 
   window._toggleLike = async function(postId, btn) {
     var liked = JSON.parse(localStorage.getItem('om_liked_posts')||'[]');
@@ -2187,6 +2231,20 @@ window.searchListings = async function() {
       } catch(e) { console.log('댓글 저장:', e.message); }
     }
   };
+
+  // 내 매물 삭제 (판매내역에서)
+  window.deleteMyListing = async function(listingId, wrapEl) {
+    if (!confirm('이 매물을 삭제하시겠어요?\n삭제하면 되돌릴 수 없어요.')) return;
+    var cu = window._currentUser || (window._auth && window._auth.currentUser);
+    if (!cu) { alert('로그인이 필요해요.'); return; }
+    try {
+      await deleteDoc(doc(db, 'listings', listingId));
+      if (wrapEl) wrapEl.style.display = 'none';
+      alert('삭제되었어요.');
+    } catch(e) {
+      alert('삭제 실패: ' + e.message);
+    }
+  };
 </script>
 </head>
 <body>
@@ -2205,7 +2263,7 @@ window.searchListings = async function() {
 <div class="sc on" id="sc-home">
   <div class="hbar">
     <div class="htop">
-      <div class="logo" onclick="showSc('home');setNav('home')" style="cursor:pointer">
+      <div class="logo" onclick="goHome()" style="cursor:pointer">
         <div class="lmark"><img src="data:image/png;base64,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" width="33" height="40" style="display:block;object-fit:contain" alt=""></div>
         <span class="ltxt"><span style="color:#E8571A">Orange</span><span style="color:#3E2510;margin-left:4px">Market</span></div>
       <div class="hicons">
@@ -2348,6 +2406,15 @@ window.searchListings = async function() {
 
   <!-- ── 알바·레슨 ── -->
   <div class="panel" id="p-jobs">
+    <div class="premium-rotator" id="rotJobs" onclick="rotateClick('rotJobs')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
+      <div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
+        <div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div>
+        <div class="rot-sub" style="font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      </div>
+      <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:rgba(255,255,255,.5);stroke-width:2;fill:none;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
     <div class="subcats"><div class="scinner">
       <button class="sch on" onclick="selSub(this)">전체</button>
       <button class="sch" onclick="selSub(this)">요식업 F&amp;B</button>
@@ -2357,11 +2424,10 @@ window.searchListings = async function() {
       <button class="sch" onclick="selSub(this)">레슨 Lessons</button>
       <button class="sch" onclick="selSub(this)">기타 Other</button>
     </div></div>
-    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#FFF8F2,#FFEDE0);border:1px dashed var(--or-bd);margin:10px 14px;padding:11px 14px;border-radius:10px;cursor:pointer">
-      <div style="font-size:20px">🚀</div>
+    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:var(--or-bg);margin:10px 14px;padding:12px 14px;border-radius:10px;cursor:pointer">
       <div style="flex:1">
-        <div style="font-size:12.5px;font-weight:700;color:var(--or)">알바·레슨 상단 고정 노출하기</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:1px">유료 광고로 더 많은 이웃에게 노출하세요 · 탭하여 등급 보기</div>
+        <div style="font-size:13px;font-weight:700;color:var(--or)">알바·레슨 상단 노출하기</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">유료 광고로 더 많은 이웃에게 노출 · 등급 보기</div>
       </div>
       <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--or);stroke-width:2;fill:none"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
@@ -2398,6 +2464,15 @@ window.searchListings = async function() {
 
   <!-- ── 부동산·차 ── -->
   <div class="panel" id="p-realty">
+    <div class="premium-rotator" id="rotRealty" onclick="rotateClick('rotRealty')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
+      <div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
+        <div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div>
+        <div class="rot-sub" style="font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      </div>
+      <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:rgba(255,255,255,.5);stroke-width:2;fill:none;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
     <div class="subcats">
       <div class="scinner">
         <button class="sch on" onclick="selSub(this)">전체</button>
@@ -2408,11 +2483,10 @@ window.searchListings = async function() {
       </div>
     </div>
     <div class="bnrwrap"><div class="md-bnr"><div class="md-ic"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div><div class="md-sp">&#127818; 오렌지 픽</div><div class="md-ttl">얼바인 이번주 신규 매물</div><div class="md-sub">직거래 위주 &#183; 42건 신규</div></div>
-    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#FFF8F2,#FFEDE0);border:1px dashed var(--or-bd);margin:10px 14px;padding:11px 14px;border-radius:10px;cursor:pointer">
-      <div style="font-size:20px">🚀</div>
+    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:var(--or-bg);margin:10px 14px;padding:12px 14px;border-radius:10px;cursor:pointer">
       <div style="flex:1">
-        <div style="font-size:12.5px;font-weight:700;color:var(--or)">부동산·차 상단 고정 노출하기</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:1px">유료 광고로 더 많은 이웃에게 노출하세요 · 탭하여 등급 보기</div>
+        <div style="font-size:13px;font-weight:700;color:var(--or)">부동산·차 상단 노출하기</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">유료 광고로 더 많은 이웃에게 노출 · 등급 보기</div>
       </div>
       <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--or);stroke-width:2;fill:none"><polyline points="9 18 15 12 9 6"/></svg>
     </div></div></div>
@@ -2462,6 +2536,15 @@ window.searchListings = async function() {
 
   <!-- ── 업체·맛집 ── -->
   <div class="panel" id="p-biz">
+    <div class="premium-rotator" id="rotBiz" onclick="rotateClick('rotBiz')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
+      <div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
+        <div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div>
+        <div class="rot-sub" style="font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      </div>
+      <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:rgba(255,255,255,.5);stroke-width:2;fill:none;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
     <div class="subcats">
       <div class="scinner">
         <button class="sch on" onclick="selSub(this)">전체</button>
@@ -2491,11 +2574,10 @@ window.searchListings = async function() {
 
     <!-- SPONSORED business -->
     <div class="sech"><div class="secht">업체 &amp; 맛집 Business &amp; Eats<small>· 스폰서</small></div></div>
-    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#FFF8F2,#FFEDE0);border:1px dashed var(--or-bd);margin:10px 14px;padding:11px 14px;border-radius:10px;cursor:pointer">
-      <div style="font-size:20px">🚀</div>
+    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:var(--or-bg);margin:10px 14px;padding:12px 14px;border-radius:10px;cursor:pointer">
       <div style="flex:1">
-        <div style="font-size:12.5px;font-weight:700;color:var(--or)">업체·맛집 상단 고정 노출하기</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:1px">유료 광고로 더 많은 이웃에게 노출하세요 · 탭하여 등급 보기</div>
+        <div style="font-size:13px;font-weight:700;color:var(--or)">업체·맛집 상단 노출하기</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">유료 광고로 더 많은 이웃에게 노출 · 등급 보기</div>
       </div>
       <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--or);stroke-width:2;fill:none"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
@@ -2568,18 +2650,8 @@ window.searchListings = async function() {
     <div id="commListContainer"></div>
 
 
-    <div class="comm-card">
-      <div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div>
-      <div class="cc-title">얼바인 스펙트럼 주차 너무 힘들죠? 😅</div>
-      <div class="cc-prev">토요일 저녁에 갔는데 B2가 5시에 이미 만차... 보통 어느 층 세워요?</div>
-      <div class="cc-foot"><div class="cc-av">M</div><span class="cc-author">박민지</span><div class="cc-st"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>34</div><div class="cc-st"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>18</div></div>
-    </div>
-    <div class="comm-card">
-      <div class="cc-top"><span class="cc-cat cc-info">정보</span><span class="cc-time">22분 전</span></div>
-      <div class="cc-title">레이크포레스트에 H마트 연내 오픈 예정!</div>
-      <div class="cc-prev">구 랄프스 자리에 생긴다고 들었어요. 공식 확인은 아니지만 기대됩니다!</div>
-      <div class="cc-foot"><div class="cc-av">S</div><span class="cc-author">Sally K.</span><div class="cc-st"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>87</div></div>
-    </div>
+    
+    
 
     <div class="iad" onclick="openSponsor('academy')"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><div><div class="iad-sp">Sponsored</div><div class="iad-t">스타 아카데미 &#8212; SAT/AP 전문</div><div class="iad-s">체험 수업 무료 &#183; 얼바인</div></div><div class="iad-arr">&#8250;</div></div>
 
@@ -2599,12 +2671,7 @@ window.searchListings = async function() {
       </div>
       <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#FAD4C8">A</div><div class="mc-av" style="background:#C8D4FA">B</div></div><span class="mc-cnt">+6명 참가</span><button class="mc-join">참가</button></div>
     </div>
-    <div class="comm-card">
-      <div class="cc-top"><span class="cc-cat cc-ask">질문</span><span class="cc-time">1시간 전</span></div>
-      <div class="cc-title">알리소비에호 근처 맛있는 한식당 추천해 주세요</div>
-      <div class="cc-prev">이사 온 지 한 달 됐는데 삼겹살이나 순두부 맛있는 곳 15분 이내로!</div>
-      <div class="cc-foot"><div class="cc-av">J</div><span class="cc-author">Jason L.</span><div class="cc-st"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>21</div><div class="cc-st"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>29</div></div>
-    </div>
+    
     <div class="pb80"></div>
   </div>
 
@@ -3569,7 +3636,7 @@ window.searchListings = async function() {
 
   <div style="flex:1;overflow-y:auto;scrollbar-width:none;background:var(--cream)">
     <div class="sech"><div class="secht">이 동네 수다방<small>&#183; 노스우드</small></div><div class="secha" onclick="showSc('home');switchMainById('p-comm')">더 보기</div></div>
-    <div class="comm-card"><div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div><div class="cc-title">얼바인 스펙트럼 주차 너무 힘들죠? 😅</div><div class="cc-prev">토요일 저녁 B2가 5시에 이미 만차... 보통 어느 층 세워요?</div><div class="cc-foot"><div class="cc-av">M</div><span class="cc-author">박민지</span></div></div>
+    <div class="comm-card" onclick="window._openPostDetail({id:'demo_post1',category:'수다',title:'얼바인 스펙트럼 주차 너무 힘들죠?',body:'토요일 저녁 B2가 5시에 이미 만차였어요. 보통 어느 층에 세우시나요? 팁 있으면 공유해주세요!',nickname:'박민지',neighborhood:'노스우드',likeCount:12,commentCount:5,images:[]})" style="cursor:pointer"><div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div><div class="cc-title">얼바인 스펙트럼 주차 너무 힘들죠? 😅</div><div class="cc-prev">토요일 저녁 B2가 5시에 이미 만차... 보통 어느 층 세워요?</div><div class="cc-foot"><div class="cc-av">M</div><span class="cc-author">박민지</span></div></div>
     <div class="sech" style="padding-top:8px"><div class="secht">이 동네 모임<small>&#183; 노스우드</small></div><div class="secha" onclick="showSc('home');switchMainById('p-comm')">더 보기</div></div>
     <div class="meetcard"><div class="mc-top"><div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div><div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park</div></div></div><div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명</span><button class="mc-join">참가</button></div></div>
     <div style="height:80px"></div>
@@ -3600,7 +3667,7 @@ window.searchListings = async function() {
     <button class="back-btn" onclick="showSc('profile')">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
-    <span class="sbar-t">내 매물</span>
+    <span class="sbar-t">My Listings</span>
     <button onclick="showSc('write')" style="background:none;border:none;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ 등록</button>
   </div>
   <div id="myListings" style="flex:1;overflow-y:auto;background:var(--cream)">
@@ -3660,7 +3727,7 @@ window.searchListings = async function() {
 <div class="sc" id="sc-mylistings">
   <div class="sbar">
     <button class="back-btn" onclick="showSc('profile')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
-    <span class="sbar-t">내 매물</span>
+    <span class="sbar-t">My Listings</span>
     <button onclick="showSc('write')" style="background:none;border:none;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ 등록</button>
   </div>
   <div id="myListings" style="flex:1;overflow-y:auto;background:var(--cream)">
@@ -4045,6 +4112,13 @@ function showSc(n){
   var fab=document.getElementById('fab');
   if(fab)fab.style.display=(n==='home')?'flex':'none';
 }
+
+function goHome(){
+  showSc('home');
+  setNav('home');
+  switchMainById('p-market');
+  if(window.loadListings) window.loadListings();
+}
 function setNav(n){
   document.querySelectorAll('.bni').forEach(function(b){b.classList.remove('on');});
   var el=document.getElementById('bni-'+n);if(el)el.classList.add('on');
@@ -4207,6 +4281,50 @@ var spDB={
   resume:{t:'OC Job Helper',c:'커리어 코칭 - OC',d:'이력서/면접 코칭. 무료 30분 첫 상담.',ch:['💻 온라인/대면 가능','⏱ 무료 30분','🌟 500건+ 취업 성공'],cta:'무료 세션 예약',bg:'linear-gradient(135deg,#0C1808,#161E0C)'},
   academy:{t:'스타 아카데미 OC',c:'교육 - SAT - AP - 얼바인',d:'얼바인 최고 평점 학원. SAT, AP 전 과목.',ch:['📍 얼바인 Northwood 근처','📅 체험 수업 무료','🏆 10년 OC 실적'],cta:'체험 수업 예약',bg:'linear-gradient(135deg,#100820,#1A1030)'}
 };
+
+// ════ 프리미엄 배너 로테이션 ════
+// 카테고리별 광고주 매칭 (여러 업체면 번갈아 노출)
+var rotatorAds = {
+  rotJobs:   ['resume','academy'],
+  rotRealty: ['nara'],
+  rotBiz:    ['boba','hmart']
+};
+var rotatorIndex = {};
+
+function rotateClick(rid){
+  var ads = rotatorAds[rid] || [];
+  var idx = rotatorIndex[rid] || 0;
+  var key = ads[idx % ads.length];
+  if(key) openSponsor(key);
+}
+
+function updateRotator(rid){
+  var el = document.getElementById(rid);
+  if(!el) return;
+  var ads = rotatorAds[rid] || [];
+  if(ads.length === 0) return;
+  var idx = rotatorIndex[rid] || 0;
+  var key = ads[idx % ads.length];
+  var d = spDB[key];
+  if(!d) return;
+  var t = el.querySelector('.rot-title');
+  var s = el.querySelector('.rot-sub');
+  if(t) t.textContent = d.t;
+  if(s) s.textContent = d.c;
+  rotatorIndex[rid] = idx + 1;
+}
+
+function startRotators(){
+  ['rotJobs','rotRealty','rotBiz'].forEach(function(rid){ updateRotator(rid); });
+  // 5초마다 로테이션 (업체 여러 개일 때만 효과)
+  setInterval(function(){
+    ['rotJobs','rotRealty','rotBiz'].forEach(function(rid){
+      var ads = rotatorAds[rid] || [];
+      if(ads.length > 1) updateRotator(rid);
+    });
+  }, 5000);
+}
+
 function openSponsor(id){
   var d=spDB[id]||spDB.hmart;
   document.getElementById('spHT').innerHTML='광고 AD';
@@ -4386,6 +4504,13 @@ function showSc(n){
   document.getElementById('bnav').style.display=hide?'none':'flex';
   var fab=document.getElementById('fab');
   if(fab)fab.style.display=(n==='home')?'flex':'none';
+}
+
+function goHome(){
+  showSc('home');
+  setNav('home');
+  switchMainById('p-market');
+  if(window.loadListings) window.loadListings();
 }
 function setNav(n){
   document.querySelectorAll('.bni').forEach(function(b){b.classList.remove('on');});
