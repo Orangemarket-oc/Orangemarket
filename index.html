@@ -98,7 +98,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 .dlbl{font-size:11px;font-weight:700;color:var(--or);min-width:34px;text-align:right}
 
 /* BANNERS */
-.bnrwrap{padding:12px 14px 0}
+.bnrwrap{padding:6px 14px 8px}
 .sp-bnr{background:linear-gradient(135deg,#2C1A0E,#3E2510);border-radius:var(--rl);
   padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;
   transition:opacity .13s;position:relative;overflow:hidden}
@@ -116,16 +116,16 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;z-index:1}
 .sp-arr svg{width:11px;height:11px;fill:none;stroke:var(--tan);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .md-bnr{background:linear-gradient(135deg,#FDF0E8,#F5E0CC);border-radius:var(--rl);
-  padding:14px 16px;display:flex;align-items:center;gap:12px}
-.md-ic{width:42px;height:42px;background:rgba(232,87,26,.12);border-radius:var(--r);
+  padding:16px 18px;display:flex;align-items:center;gap:12px}
+.md-ic{width:60px;height:60px;background-size:cover;background-position:center;background:rgba(232,87,26,.12);border-radius:var(--r);
   display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .md-ic svg{width:20px;height:20px;fill:none;stroke:var(--or);stroke-width:1.5;stroke-linecap:round}
 .md-sp{font-size:9px;font-weight:700;color:var(--or);letter-spacing:.08em;text-transform:uppercase;margin-bottom:3px}
-.md-ttl{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:2px}
+.md-ttl{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:2px}
 .md-sub{font-size:11px;color:var(--muted)}
 
 /* SEC HEADER */
-.sech{display:flex;align-items:center;justify-content:space-between;padding:13px 16px 8px}
+.sech{display:flex;align-items:center;justify-content:space-between;padding:13px 16px 8px;margin-top:6px}
 .secht{font-size:14px;font-weight:700;color:var(--ink)}
 .secht small{font-size:11px;font-weight:400;color:var(--muted);margin-left:4px}
 .secha{font-size:12px;font-weight:500;color:var(--or);cursor:pointer}
@@ -159,15 +159,15 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 .boost-tag svg{width:9px;height:9px;fill:none;stroke:var(--w);stroke-width:2.5}
 
 /* INLINE AD */
-.iad{background:var(--w);margin:0 14px 8px;border-radius:var(--rl);
-  padding:11px 13px;display:flex;align-items:center;gap:11px;
+.iad{background:linear-gradient(135deg,#FDF0E8,#F5E0CC);margin:8px 14px 10px;border-radius:var(--rl);
+  padding:13px 15px;display:flex;align-items:center;gap:11px;
   border:1px solid var(--line);cursor:pointer;transition:transform .12s}
 .iad:hover{transform:translateY(-1px)}
-.iad-ic{width:40px;height:40px;background:var(--ivory);border-radius:var(--r);
+.iad-ic{width:48px;height:48px;background:rgba(232,87,26,.12);background-size:cover;background-position:center;border-radius:var(--r);
   display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .iad-ic svg{width:18px;height:18px;fill:none;stroke:var(--or);stroke-width:1.6;stroke-linecap:round}
-.iad-sp{font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
-.iad-t{font-size:12.5px;font-weight:500;color:var(--ink);margin-bottom:1px}
+.iad-sp{font-size:9px;font-weight:700;color:var(--or);letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
+.iad-t{font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:1px}
 .iad-s{font-size:11px;color:var(--muted)}
 .iad-arr{margin-left:auto;font-size:16px;color:var(--muted);font-weight:300}
 
@@ -1019,9 +1019,11 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         where('status','==','active'), limit(50));
       const snap = await getDocs(q).catch(()=>({docs:[]}));
       var blocked = (window.getBlockedUsers && window.getBlockedUsers()) || [];
+      var catFilter = window._marketFilter || null;
       const list = snap.docs
         .map(d=>({id:d.id,...d.data()}))
         .filter(function(l){ return blocked.indexOf(l.userId) < 0; })
+        .filter(function(l){ return !catFilter || (l.category && l.category.indexOf(catFilter) >= 0); })
         .sort((a,b)=>{
           if(a.isBoost&&!b.isBoost) return -1;
           if(!a.isBoost&&b.isBoost) return 1;
@@ -1396,21 +1398,28 @@ window.searchListings = async function() {
 
 
   // ── 다른 유저 프로필 보기 ──
-  window.viewUserProfile = async function(userId) {
+  window.viewUserProfile = async function(userId, fallbackNick) {
     if (!userId) return;
-    window._viewingUser = { uid: userId };
+    var nm = fallbackNick || '이웃';
+    window._viewingUser = { uid: userId, nickname: nm };
     showSc('userprofile');
+    var setTxt = function(id, t){ var el=document.getElementById(id); if(el) el.textContent=t; };
+    setTxt('userProfileName', nm);
+    setTxt('userProfileNickname', nm);
+    setTxt('userProfileAvatar', nm[0]);
+    setTxt('userProfileArea', '얼바인');
+    setTxt('userProfileScore', '바이브 점수 0');
     try {
-      // 유저 정보
       const userSnap = await getDoc(doc(db,'users',userId));
-      if (!userSnap.exists()) return;
-      const user = userSnap.data();
-      window._viewingUser = { uid: userId, ...user };
-      document.getElementById('userProfileName').textContent = user.nickname || '이웃';
-      document.getElementById('userProfileNickname').textContent = user.nickname || '이웃';
-      document.getElementById('userProfileAvatar').textContent = (user.nickname||'이')[0];
-      document.getElementById('userProfileArea').textContent = user.neighborhood || 'OC';
-      document.getElementById('userProfileScore').textContent = '바이브 점수 '+(user.vibeScore||0);
+      if (userSnap.exists()) {
+        const user = userSnap.data();
+        window._viewingUser = { uid: userId, ...user };
+        setTxt('userProfileName', user.nickname || '이웃');
+        setTxt('userProfileNickname', user.nickname || '이웃');
+        setTxt('userProfileAvatar', (user.nickname||'이')[0]);
+        setTxt('userProfileArea', user.neighborhood || 'OC');
+        setTxt('userProfileScore', '바이브 점수 '+(user.vibeScore||0));
+      }
 
       // 유저 매물
       const listQ = query(collection(db,'listings'),
@@ -1565,15 +1574,10 @@ window.searchListings = async function() {
     titleEl.textContent = title;
     var btnWrap = document.createElement('div');
     btnWrap.style.cssText = 'display:flex;gap:8px;align-items:center';
-    var homeBtn = document.createElement('button');
-    homeBtn.textContent = '홈';
-    homeBtn.style.cssText = 'background:var(--or-bg);border:none;color:var(--or);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;padding:6px 12px;border-radius:8px';
-    homeBtn.addEventListener('click', function(){ overlay.remove(); showSc('home'); setNav('home'); });
     var closeBtn = document.createElement('button');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'background:none;border:none;font-size:18px;color:var(--muted);cursor:pointer;line-height:1';
     closeBtn.addEventListener('click', function(){ overlay.remove(); });
-    btnWrap.appendChild(homeBtn);
     btnWrap.appendChild(closeBtn);
     header.appendChild(titleEl);
     header.appendChild(btnWrap);
@@ -1975,10 +1979,10 @@ window.searchListings = async function() {
     var key = 'om_bump_' + listingId;
     var last = parseInt(localStorage.getItem(key) || '0');
     var now = Date.now();
-    var DAY = 24 * 60 * 60 * 1000;
-    if (now - last < DAY) {
-      var hrsLeft = Math.ceil((DAY - (now - last)) / (60*60*1000));
-      alert('끌어올리기는 24시간마다 한 번 가능해요.\n약 ' + hrsLeft + '시간 후에 다시 올릴 수 있어요.\n\n💡 지금 바로 상단에 고정하려면 유료 부스트를 이용하세요!');
+    var WEEK = 7 * 24 * 60 * 60 * 1000;
+    if (now - last < WEEK) {
+      var daysLeft = Math.ceil((WEEK - (now - last)) / (24*60*60*1000));
+      alert('끌어올리기는 일주일에 한 번 가능해요.\n약 ' + daysLeft + '일 후에 다시 올릴 수 있어요.\n\n💡 지금 바로 상단에 고정하려면 유료 부스트를 이용하세요!');
       return;
     }
     try {
@@ -2026,19 +2030,47 @@ window.searchListings = async function() {
     container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">불러오는 중...</div>';
     try {
       var snap = await getDocs(query(collection(db,'community'), limit(50))).catch(function(){return {docs:[]};});
+      var blocked = (window.getBlockedUsers && window.getBlockedUsers()) || [];
       var posts = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .filter(function(p){ return blocked.indexOf(p.userId) < 0; })
         .sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); });
       if (posts.length === 0) {
         container.innerHTML = '';
         return;
       }
+      window._commAllPosts = posts;
+      window._commShown = 0;
       container.innerHTML = '';
-      posts.forEach(function(p){ container.appendChild(_renderCommCard(p)); });
+      _renderCommPage();
     } catch(e) {
       container.innerHTML = '';
       console.log('커뮤니티 로드:', e.message);
     }
   };
+
+  function _renderCommPage() {
+    var container = document.getElementById('commListContainer');
+    if (!container) return;
+    var posts = window._commAllPosts || [];
+    var shown = window._commShown || 0;
+    // 기존 더보기 버튼 제거
+    var oldBtn = document.getElementById('commMoreBtn');
+    if (oldBtn) oldBtn.remove();
+    var next = Math.min(shown + 20, posts.length);
+    for (var i = shown; i < next; i++) {
+      container.appendChild(_renderCommCard(posts[i]));
+    }
+    window._commShown = next;
+    // 더 남았으면 더보기 버튼
+    if (next < posts.length) {
+      var btn = document.createElement('button');
+      btn.id = 'commMoreBtn';
+      btn.textContent = '더 보기 (' + (posts.length - next) + ')';
+      btn.style.cssText = 'display:block;width:calc(100% - 28px);margin:12px 14px;padding:12px;background:var(--w);border:1px solid var(--or-bd);border-radius:10px;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit';
+      btn.onclick = function(){ _renderCommPage(); };
+      container.appendChild(btn);
+    }
+  }
 
   function _timeAgo(seconds) {
     if (!seconds) return '방금';
@@ -2136,6 +2168,32 @@ window.searchListings = async function() {
     footer.appendChild(likeBtn);
     footer.appendChild(cmtBtn);
 
+    // 모임 카테고리면 참가하기 버튼
+    if (catKey === '모임') {
+      var joinBtn = document.createElement('button');
+      var joinKey = 'om_joined_' + p.id;
+      var joined = localStorage.getItem(joinKey) === '1';
+      joinBtn.textContent = joined ? '참가 완료 ✓' : '참가하기';
+      joinBtn.style.cssText = 'margin-left:auto;padding:8px 18px;border-radius:20px;border:none;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;background:' + (joined?'var(--green-bg,#EFF7F2)':'var(--or)') + ';color:' + (joined?'var(--green,#3A7D52)':'#fff');
+      joinBtn.onclick = function() {
+        var isJoined = localStorage.getItem(joinKey) === '1';
+        if (isJoined) {
+          localStorage.removeItem(joinKey);
+          joinBtn.textContent = '참가하기';
+          joinBtn.style.background = 'var(--or)';
+          joinBtn.style.color = '#fff';
+          alert('모임 참가를 취소했어요.');
+        } else {
+          localStorage.setItem(joinKey, '1');
+          joinBtn.textContent = '참가 완료 ✓';
+          joinBtn.style.background = 'var(--green-bg,#EFF7F2)';
+          joinBtn.style.color = 'var(--green,#3A7D52)';
+          alert('모임에 참가 신청됐어요! 🍊\n주최자에게 채팅으로 연락해보세요.');
+        }
+      };
+      footer.appendChild(joinBtn);
+    }
+
     panel.appendChild(header);
     panel.appendChild(body);
     panel.appendChild(footer);
@@ -2223,7 +2281,9 @@ window.searchListings = async function() {
   window._loadComments = async function(post, body) {
     try {
       var snap = await getDocs(query(collection(db,'community',post.id,'comments'), limit(50))).catch(function(){return {docs:[]};});
+      var blockedC = (window.getBlockedUsers && window.getBlockedUsers()) || [];
       var comments = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .filter(function(c){ return blockedC.indexOf(c.userId) < 0; })
         .sort(function(a,b){ return ((a.createdAt&&a.createdAt.seconds)||0)-((b.createdAt&&b.createdAt.seconds)||0); });
       if (comments.length === 0) {
         body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--muted)"><div style="font-size:32px;margin-bottom:8px">💬</div><div style="font-size:13px">첫 댓글을 남겨보세요!</div></div>';
@@ -2284,11 +2344,8 @@ window.searchListings = async function() {
   // 닉네임 클릭 → 유저 프로필 (게시글 포함)
   window.viewUserPosts = function(userId, nickname) {
     var sh = document.getElementById('om_sheet'); if (sh) sh.remove();
-    if (!userId || userId === 'local_me' || String(userId).indexOf('demo')===0) {
-      alert((nickname||'이 사용자') + '님의 프로필이에요.\n(데모 게시글은 프로필 조회가 제한돼요)');
-      return;
-    }
-    if (window.viewUserProfile) window.viewUserProfile(userId);
+    if (!userId) { alert('사용자 정보를 찾을 수 없어요.'); return; }
+    if (window.viewUserProfile) window.viewUserProfile(userId, nickname);
   };
 
   // ════ 광고 신청 ════
@@ -2350,6 +2407,20 @@ window.searchListings = async function() {
     alert('광고 신청이 접수되었어요! 🍊\n\n입금 안내:\n💸 Zelle/Venmo: orangemarket.oc@gmail.com\n메모에 업체명을 적어주세요.\n입금 확인 후 노출됩니다.');
     showSc('home'); setNav('home');
   };
+
+  // 업체 등록 제출 (무료/유료)
+  window.submitBizRegister = function() {
+    var plan = window._bizPlan || 'free';
+    if (plan === 'paid') {
+      // 유료는 광고 신청 폼으로
+      alert('유료 광고는 신청 후 입금 확인을 거쳐요. 신청 폼으로 이동할게요! 🍊');
+      if (window.showApplyAd) window.showApplyAd();
+      return;
+    }
+    // 무료 등록
+    alert('업체가 무료로 등록되었어요! 🍊\n사진 3장과 기본 프로필이 노출됩니다.');
+    showSc('home'); setNav('home');
+  };
 </script>
 </head>
 <body>
@@ -2401,6 +2472,15 @@ window.searchListings = async function() {
 
   <!-- ── 마켓 ── -->
   <div class="panel on" id="p-market">
+    <div class="premium-rotator" id="rotMarket" onclick="rotateClick('rotMarket')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
+        <div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
+          <div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div>
+          <div class="rot-sub" style="font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        </div>
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:rgba(255,255,255,.5);stroke-width:2;fill:none;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
     <div class="subcats"><div class="scinner">
       <button class="sch on" onclick="selSub(this)">전체</button>
       <button class="sch" onclick="selSub(this)">가전/전자</button>
@@ -2416,30 +2496,8 @@ window.searchListings = async function() {
       <button class="sch" onclick="selSub(this)">애완동물</button>
       <button class="sch" onclick="selSub(this)">기타</button>
     </div></div>
-    <!-- DISTANCE SLIDER -->
-    <div class="dist-bar">
-      <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <span>반경</span>
-      <input type="range" min="1" max="30" value="5" class="dslider" id="distSlider"
-        oninput="var v=this.value;document.getElementById('distVal').textContent=v+'mi';document.getElementById('distLbl2').textContent='&#183; '+v+'mi'"/>
-      <span class="dlbl" id="distVal">5mi</span>
-    </div>
-    <!-- SPONSOR -->
-    <div class="bnrwrap">
-      <div class="sp-bnr" onclick="openSponsor('hmart')">
-        <div class="sp-ic"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>
-        <div>
-          <div class="sp-sp">Sponsored</div>
-          <div class="sp-ttl">H Mart &#8212; OC 한인마트</div>
-          <div class="sp-sub">신선식품 &#183; 주말 20% 할인 &#183; 얼바인</div>
-        </div>
-        <div class="sp-arr"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
-      </div>
-    </div>
-    <div class="sech">
-      <div class="secht">마켓 Market<small>인증 지역 반경 노출</small></div>
-      <div class="secha">전체보기</div>
-    </div>
+    
+        <div class="sech"><div class="secht" id="secTitle-market" style="color:var(--ink);font-weight:800">전체 <span style="font-size:12px;font-weight:600;color:var(--muted)">All</span></div><button onclick="showSc('write')" style="background:var(--or);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:inherit;white-space:nowrap">+ 등록</button></div>
 
     <!-- CARD: boosted -->
     <div class="card" onclick="showSc('detail')">
@@ -2473,7 +2531,7 @@ window.searchListings = async function() {
     </div>
 
     <div class="iad" onclick="openSponsor('boba')">
-      <div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/></svg></div>
+      <div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z"/></svg></div>
       <div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">Sunright Tea Studio &#8212; 얼바인 오픈!</div><div class="iad-s">회원 10% 할인</div></div>
       <div class="iad-arr">&#8250;</div>
     </div>
@@ -2506,13 +2564,15 @@ window.searchListings = async function() {
         <div class="cmeta"><div class="cst"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>52</div><div class="cst"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>21</div></div>
       </div>
     </div>
+    
+    
     <div class="pb80"></div>
   </div>
 
   <!-- ── 알바·레슨 ── -->
   <div class="panel" id="p-jobs">
     <div class="premium-rotator" id="rotJobs" onclick="rotateClick('rotJobs')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
-      <div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
+      <div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
         <div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div>
@@ -2522,25 +2582,16 @@ window.searchListings = async function() {
     </div>
     <div class="subcats"><div class="scinner">
       <button class="sch on" onclick="selSub(this)">전체</button>
-      <button class="sch" onclick="selSub(this)">요식업 F&amp;B</button>
-      <button class="sch" onclick="selSub(this)">리테일 Retail</button>
-      <button class="sch" onclick="selSub(this)">사무직 Office</button>
-      <button class="sch" onclick="selSub(this)">배달 Delivery</button>
-      <button class="sch" onclick="selSub(this)">레슨 Lessons</button>
+      <button class="sch" onclick="selSub(this)">요식업</button>
+      <button class="sch" onclick="selSub(this)">리테일</button>
+      <button class="sch" onclick="selSub(this)">사무직</button>
+      <button class="sch" onclick="selSub(this)">배달</button>
+      <button class="sch" onclick="selSub(this)">레슨</button>
       <button class="sch" onclick="selSub(this)">기타 Other</button>
     </div></div>
-    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:var(--or-bg);margin:10px 14px;padding:12px 14px;border-radius:10px;cursor:pointer">
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:700;color:var(--or)">알바·레슨 상단 노출하기</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">유료 광고로 더 많은 이웃에게 노출 · 등급 보기</div>
-      </div>
-      <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--or);stroke-width:2;fill:none"><polyline points="9 18 15 12 9 6"/></svg>
-    </div>
+    
     <!-- 공고 버튼 + 필터 -->
-    <div style="background:var(--w);border-bottom:1px solid var(--line);display:flex;gap:8px;padding:9px 14px">
-      <button onclick="showSc('job-write')" style="flex:1;padding:9px;background:var(--or);border:none;border-radius:8px;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">+ 알바 공고</button>
-      <button onclick="showSc('lesson-write')" style="flex:1;padding:9px;background:var(--w);border:1.5px solid var(--or);border-radius:8px;color:var(--or);font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">+ 레슨 공고</button>
-    </div>
+    
     <div style="background:var(--w);padding:8px 14px 10px;border-bottom:1px solid var(--line)">
       <div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none">
         <select style="border:1.5px solid var(--line);border-radius:8px;padding:6px 10px;font-size:11.5px;font-family:inherit;outline:none;background:var(--w);color:var(--mid);cursor:pointer;flex-shrink:0">
@@ -2554,13 +2605,16 @@ window.searchListings = async function() {
         </select>
       </div>
     </div>
-    <div class="bnrwrap"><div class="md-bnr"><div class="md-ic"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div><div><div class="md-sp">&#127818; 오렌지 픽</div><div class="md-ttl">이번주 인기 구인 &amp; 레슨</div><div class="md-sub">28건 신규 &#183; 얼바인 중심</div></div></div></div>
-    <div class="sech"><div class="secht">알바 &amp; 레슨 Jobs &amp; Lessons</div><div class="secha">+ 등록</div></div>
+    
+    
+    <div class="sech"><div class="secht" id="secTitle-jobs" style="color:var(--ink);font-weight:800">전체 <span style="font-size:12px;font-weight:600;color:var(--muted)">All</span></div>
+    
+    <button onclick="showSc('job-write')" style="background:var(--or);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:inherit;white-space:nowrap">+ 등록</button></div>
 
     <!-- HIRING card (고용주) -->
     
 
-    <div class="iad" onclick="openSponsor('resume')"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div><div class="iad-sp">Sponsored</div><div class="iad-t">OC Job Helper &#8212; 이력서/면접 코칭</div><div class="iad-s">무료 30분 상담</div></div><div class="iad-arr">&#8250;</div></div>
+    <div class="iad" onclick="openSponsor('resume')"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z"/></svg></div><div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">OC Job Helper &#8212; 이력서/면접 코칭</div><div class="iad-s">무료 30분 상담</div></div><div class="iad-arr">&#8250;</div></div>
 
     <!-- LESSON TEACHING -->
     
@@ -2570,7 +2624,7 @@ window.searchListings = async function() {
   <!-- ── 부동산·차 ── -->
   <div class="panel" id="p-realty">
     <div class="premium-rotator" id="rotRealty" onclick="rotateClick('rotRealty')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
-      <div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
+      <div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
         <div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div>
@@ -2581,27 +2635,22 @@ window.searchListings = async function() {
     <div class="subcats">
       <div class="scinner">
         <button class="sch on" onclick="selSub(this)">전체</button>
-        <button class="sch" onclick="selSub(this)">렌트 Rent</button>
-        <button class="sch" onclick="selSub(this)">매매 Buy</button>
-        <button class="sch" onclick="selSub(this)">룸메이트 Roommate</button>
-        <button class="sch" onclick="selSub(this)">중고차 Used Cars</button>
+        <button class="sch" onclick="selSub(this)">렌트</button>
+        <button class="sch" onclick="selSub(this)">매매</button>
+        <button class="sch" onclick="selSub(this)">룸메이트</button>
+        <button class="sch" onclick="selSub(this)">중고차</button>
       </div>
     </div>
-    <div class="bnrwrap"><div class="md-bnr"><div class="md-ic"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div><div><div class="md-sp">&#127818; 오렌지 픽</div><div class="md-ttl">얼바인 이번주 신규 매물</div><div class="md-sub">직거래 위주 &#183; 42건 신규</div></div>
-    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:var(--or-bg);margin:10px 14px;padding:12px 14px;border-radius:10px;cursor:pointer">
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:700;color:var(--or)">부동산·차 상단 노출하기</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">유료 광고로 더 많은 이웃에게 노출 · 등급 보기</div>
-      </div>
-      <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--or);stroke-width:2;fill:none"><polyline points="9 18 15 12 9 6"/></svg>
-    </div></div></div>
-    <div class="sech"><div class="secht">부동산 &amp; 중고차 Real Estate &amp; Cars<small>직거래 위주</small></div><div class="secha">지도보기</div></div>
+    
+    
+    
+    <div class="sech"><div class="secht" id="secTitle-realty" style="color:var(--ink);font-weight:800">전체 <span style="font-size:12px;font-weight:600;color:var(--muted)">All</span></div><button onclick="showSc('realty-write')" style="background:var(--or);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:inherit;white-space:nowrap">+ 등록</button></div>
 
     <div class="rcard">
       <div class="rimg th-r1">
         <svg viewBox="0 0 24 24" style="width:48px;height:48px;fill:none;stroke:#4A7090;stroke-width:1.2;stroke-linecap:round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         <div class="rprice">$4,200/월</div>
-        <div class="rtype">렌트 Rent</div>
+        <div class="rtype">렌트</div>
       </div>
       <div class="rbody">
         <div class="rtitle">얼바인 노스우드 &#183; 3BR/2BA 타운하우스</div>
@@ -2613,7 +2662,7 @@ window.searchListings = async function() {
       <div class="rimg th-r2">
         <svg viewBox="0 0 24 24" style="width:48px;height:48px;fill:none;stroke:#9B6A2A;stroke-width:1.2;stroke-linecap:round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         <div class="rprice">$1.28M</div>
-        <div class="rtype" style="background:var(--brown)">매매 Buy</div>
+        <div class="rtype" style="background:var(--brown)">매매</div>
       </div>
       <div class="rbody">
         <div class="rtitle">레이크포레스트 &#183; 4BR 단독주택 &#183; 직거래</div>
@@ -2621,10 +2670,10 @@ window.searchListings = async function() {
       </div>
     </div>
 
-    <div class="iad" onclick="openSponsor('nara')"><div class="iad-ic"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div><div><div class="iad-sp">Sponsored</div><div class="iad-t">나라은행 &#8212; 무료 모기지 상담</div><div class="iad-s">한국어 가능 &#183; OC 전문</div></div><div class="iad-arr">&#8250;</div></div>
+    <div class="iad" onclick="openSponsor('nara')"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z"/></svg></div><div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">나라은행 &#8212; 무료 모기지 상담</div><div class="iad-s">한국어 가능 &#183; OC 전문</div></div><div class="iad-arr">&#8250;</div></div>
 
     <!-- 중고차 -->
-    <div class="sech" style="padding-top:10px"><div class="secht">중고차 Used Cars</div></div>
+    <div class="sech" style="padding-top:10px"><div class="secht">중고차</div></div>
     <div class="rcard">
       <div class="rimg th-car">
         <svg viewBox="0 0 24 24" style="width:48px;height:48px;fill:none;stroke:#2563A8;stroke-width:1.2;stroke-linecap:round"><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v5"/><circle cx="15.7" cy="18.7" r="2.3"/><circle cx="8.3" cy="18.7" r="2.3"/></svg>
@@ -2636,13 +2685,15 @@ window.searchListings = async function() {
         <div class="rdet"><span>얼바인</span><span>무사고</span><span>1인 소유</span></div>
       </div>
     </div>
+    
+    
     <div class="pb80"></div>
   </div>
 
   <!-- ── 업체·맛집 ── -->
   <div class="panel" id="p-biz">
     <div class="premium-rotator" id="rotBiz" onclick="rotateClick('rotBiz')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
-      <div style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
+      <div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
         <div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div>
@@ -2653,11 +2704,11 @@ window.searchListings = async function() {
     <div class="subcats">
       <div class="scinner">
         <button class="sch on" onclick="selSub(this)">전체</button>
-        <button class="sch" onclick="selSub(this)">맛집 Restaurants</button>
-        <button class="sch" onclick="selSub(this)">카페 Cafe</button>
-        <button class="sch" onclick="selSub(this)">뷰티/미용 Beauty</button>
-        <button class="sch" onclick="selSub(this)">이사/청소 Moving</button>
-        <button class="sch" onclick="selSub(this)">교육/학원 Education</button>
+        <button class="sch" onclick="selSub(this)">맛집</button>
+        <button class="sch" onclick="selSub(this)">카페</button>
+        <button class="sch" onclick="selSub(this)">뷰티/미용</button>
+        <button class="sch" onclick="selSub(this)">이사/청소</button>
+        <button class="sch" onclick="selSub(this)">교육/학원</button>
         <button class="sch" onclick="selSub(this)">의료/건강 Health</button>
         <button class="sch" onclick="selSub(this)">부동산/금융 Finance</button>
         <button class="sch" onclick="selSub(this)">기타 Other</button>
@@ -2665,27 +2716,12 @@ window.searchListings = async function() {
     </div>
 
     <!-- FREE LISTING + UPSELL BANNER -->
-    <div class="bnrwrap">
-      <div style="background:linear-gradient(135deg,#FDF0E8,#F5E0CC);border-radius:var(--rl);padding:15px 16px">
-        <div style="font-size:9px;font-weight:700;color:var(--or);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px">&#127818; 업체 등록 안내</div>
-        <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px">기본 등록은 무료!</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">업체 프로필 &#183; 사진 3장 — 완전 무료로 시작하세요. 더 많은 노출은 유료 광고로!</div>
-        <div style="display:flex;gap:8px">
-          <button onclick="showSc('biz-write')" style="flex:1;padding:10px;background:var(--or);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">무료 등록하기</button>
-          <button onclick="showSc('ad-info')" style="flex:1;padding:10px;background:var(--w);border:1.5px solid var(--or);border-radius:8px;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">유료 광고 보기</button>
-        </div>
-      </div>
-    </div>
+    
 
     <!-- SPONSORED business -->
-    <div class="sech"><div class="secht">업체 &amp; 맛집 Business &amp; Eats<small>· 스폰서</small></div></div>
-    <div onclick="showSc('ad-info')" style="display:flex;align-items:center;gap:10px;background:var(--or-bg);margin:10px 14px;padding:12px 14px;border-radius:10px;cursor:pointer">
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:700;color:var(--or)">업체·맛집 상단 노출하기</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">유료 광고로 더 많은 이웃에게 노출 · 등급 보기</div>
-      </div>
-      <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--or);stroke-width:2;fill:none"><polyline points="9 18 15 12 9 6"/></svg>
-    </div>
+    <div class="sech"><div class="secht" id="secTitle-biz" style="color:var(--ink);font-weight:800">전체 <span style="font-size:12px;font-weight:600;color:var(--muted)">All</span></div><button onclick="showSc('biz-write')" style="background:var(--or);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:inherit;white-space:nowrap">+ 등록</button></div>
+    
+    
     <div class="bizcard" onclick="openSponsor('hmart')">
       <div class="biz-hero th-biz1">
         <svg viewBox="0 0 24 24" style="width:44px;height:44px;fill:none;stroke:#E67E22;stroke-width:1.2;stroke-linecap:round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
@@ -2730,10 +2766,12 @@ window.searchListings = async function() {
         <div class="biz-tags"><span class="biz-tag">순두부찌개</span><span class="biz-tag">한정식</span><span class="biz-tag">주차 편함</span></div>
       </div>
     </div>
+    
+    
 
     <div class="iad" onclick="openSponsor('advertise')">
-      <div class="iad-ic"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-      <div><div class="iad-sp">&#127818; 광고 안내</div><div class="iad-t">스폰서 배너로 더 많이 노출하세요</div><div class="iad-s">Basic $299/월 &#183; 무료 상담 가능</div></div>
+      <div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z"/></svg></div>
+      <div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">스폰서 배너로 더 많이 노출하세요</div><div class="iad-s">Basic $299/월 &#183; 무료 상담 가능</div></div>
       <div class="iad-arr">&#8250;</div>
     </div>
     <div class="pb80"></div>
@@ -2741,16 +2779,21 @@ window.searchListings = async function() {
 
   <!-- ── 커뮤니티 (수다방+모임 통합) ── -->
   <div class="panel" id="p-comm">
+    <div class="premium-rotator" id="rotComm" onclick="rotateClick('rotComm')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px"><div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div><div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div><div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div><div class="rot-sub" style="font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:rgba(255,255,255,.5);stroke-width:2;fill:none;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg></div>
     <div class="subcats">
       <div class="scinner">
-        <button class="sch on" onclick="selSub(this)">전체 All</button>
-        <button class="sch" onclick="selSub(this)">수다 Chat</button>
-        <button class="sch" onclick="selSub(this)">정보 Info</button>
-        <button class="sch" onclick="selSub(this)">질문 Q&amp;A</button>
-        <button class="sch" onclick="selSub(this)">모임 Gathering</button>
+        <button class="sch on" onclick="selSub(this)">전체</button>
+        <button class="sch" onclick="selSub(this)">수다</button>
+        <button class="sch" onclick="selSub(this)">정보</button>
+        <button class="sch" onclick="selSub(this)">질문</button>
+        <button class="sch" onclick="selSub(this)">모임</button>
       </div>
     </div>
-    <div class="sech"><div class="secht">커뮤니티 Community<small>· 수다방 &amp; 모임</small></div><div class="secha" onclick="showSc('comm-write')" style="cursor:pointer">+ 글쓰기</div></div>
+    <div class="sech"><div class="secht" id="secTitle-comm" style="color:var(--ink);font-weight:800">전체 <span style="font-size:12px;font-weight:600;color:var(--muted)">All</span></div><button onclick="showSc('comm-write')" style="background:var(--or);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:inherit;white-space:nowrap">+ 글쓰기</button></div>
+    
+    
+    
+    
 
     <div id="commListContainer"></div>
 
@@ -2758,7 +2801,7 @@ window.searchListings = async function() {
     
     
 
-    <div class="iad" onclick="openSponsor('academy')"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><div><div class="iad-sp">Sponsored</div><div class="iad-t">스타 아카데미 &#8212; SAT/AP 전문</div><div class="iad-s">체험 수업 무료 &#183; 얼바인</div></div><div class="iad-arr">&#8250;</div></div>
+    <div class="iad" onclick="openSponsor('academy')"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z"/></svg></div><div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">스타 아카데미 &#8212; SAT/AP 전문</div><div class="iad-s">체험 수업 무료 &#183; 얼바인</div></div><div class="iad-arr">&#8250;</div></div>
 
     <!-- 모임 within 커뮤니티 -->
     <div class="sech" style="padding-top:8px"><div class="secht">동네 모임 Gatherings</div><div class="secha">+ 만들기</div></div>
@@ -2782,10 +2825,18 @@ window.searchListings = async function() {
 
   <!-- ── 나눔 ── -->
   <div class="panel" id="p-donate">
-    <div class="bnrwrap"><div class="md-bnr"><div class="md-ic"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><div><div class="md-sp">Community</div><div class="md-ttl">이웃과 함께 나눠요</div><div class="md-sub">무료 나눔 &#183; Free Donations</div></div></div></div>
-    <div class="sech"><div class="secht">나눔 Donations<small>· Free &amp; Funding</small></div><div class="secha">+ 나눔 등록</div></div>
+    <div class="premium-rotator" id="rotDonate" onclick="rotateClick('rotDonate')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px"><div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div><div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div><div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div><div class="rot-sub" style="font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:rgba(255,255,255,.5);stroke-width:2;fill:none;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg></div>
+    
+    
+    
+    
+    <div class="sech"><div class="secht" id="secTitle-donate" style="color:var(--ink);font-weight:800">전체 <span style="font-size:12px;font-weight:600;color:var(--muted)">All</span></div>
+    
+    <button onclick="showSc('write')" style="background:var(--or);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:inherit;white-space:nowrap">+ 등록</button></div>
     <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="showSc('detail')"><div class="cth th-plnt"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#5B8A3C;stroke-width:1.5;stroke-linecap:round"><path d="M12 22V12"/><path d="M12 12C12 12 7 10 7 6a5 5 0 0 1 10 0c0 4-5 6-5 6z"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(91,138,60,.1);color:#3A6B20;">식물 Plants</div><div class="ctitle">몬스테라 화분 (대형)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>라구나힐스 &#183; 2시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
     <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="showSc('detail')"><div class="cth th-baby"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#B0405A;stroke-width:1.5;stroke-linecap:round"><path d="M9 12H5a2 2 0 0 0-2 2v6h18v-6a2 2 0 0 0-2-2h-4"/><circle cx="12" cy="6" r="4"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(176,64,90,.1);color:#8B2040;">유아동/장난감 Baby &amp; Kids</div><div class="ctitle">아기 옷 묶음 (0&#8211;6개월)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 &#183; 4시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
+    <div class="iad" onclick="showSc('ad-info')"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z"/></svg></div><div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">이웃 나눔 더 보기</div><div class="iad-s">무료 나눔 · 얼바인</div></div><div class="iad-arr">›</div></div>
+    
     
     <div style="display:none"><!-- COMMUNITY FUNDING -->
     <div style="padding:14px 16px 6px">
@@ -2875,8 +2926,8 @@ window.searchListings = async function() {
     <div class="wsep"></div>
     <div class="wsec">유형</div>
     <div class="catgrid">
-      <button class="catc on" onclick="selCat(this)">렌트 Rent</button>
-      <button class="catc" onclick="selCat(this)">룸메이트 Roommate</button>
+      <button class="catc on" onclick="selCat(this)">렌트</button>
+      <button class="catc" onclick="selCat(this)">룸메이트</button>
       <button class="catc" onclick="selCat(this)">매매 Sale</button>
       <button class="catc" onclick="selCat(this)">중고차 Used Car</button>
       <button class="catc" onclick="selCat(this)">서브렛 Sublet</button>
@@ -2899,7 +2950,7 @@ window.searchListings = async function() {
           <span id="realtyBoostSlider" style="position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:24px;transition:.2s"></span>
         </label>
       </div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.6">$9.99/주 — 부동산·차 목록 최상단 7일 고정 노출. 더 빨리 거래하세요!</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.6">🚀 급매 부스트 · $9.99/주 — 부동산·차 목록 최상단 7일 고정 노출. 더 빨리 거래하세요!</div>
     </div>
     <button class="wsub" onclick="submitRealty()">등록하기 Post Listing</button>
   </div>
@@ -2913,10 +2964,10 @@ window.searchListings = async function() {
   <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--w);padding:18px">
     <div class="wsec">카테고리</div>
     <div class="catgrid">
-      <button class="catc on" onclick="selCat(this)">수다 Chat</button>
-      <button class="catc" onclick="selCat(this)">질문 Q&amp;A</button>
-      <button class="catc" onclick="selCat(this)">정보 Info</button>
-      <button class="catc" onclick="selCat(this)">모임 Gathering</button>
+      <button class="catc on" onclick="selCat(this)">수다</button>
+      <button class="catc" onclick="selCat(this)">질문</button>
+      <button class="catc" onclick="selCat(this)">정보</button>
+      <button class="catc" onclick="selCat(this)">모임</button>
     </div>
     <div class="wsep"></div>
     <div class="wsec">제목</div>
@@ -2949,11 +3000,11 @@ window.searchListings = async function() {
   <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--w);padding:18px">
     <div class="wsec">업종 카테고리</div>
     <div class="catgrid">
-      <button class="catc on" onclick="selCat(this)">요식업 F&amp;B</button>
-      <button class="catc" onclick="selCat(this)">카페 Cafe</button>
-      <button class="catc" onclick="selCat(this)">리테일 Retail</button>
-      <button class="catc" onclick="selCat(this)">배달 Delivery</button>
-      <button class="catc" onclick="selCat(this)">사무직 Office</button>
+      <button class="catc on" onclick="selCat(this)">요식업</button>
+      <button class="catc" onclick="selCat(this)">카페</button>
+      <button class="catc" onclick="selCat(this)">리테일</button>
+      <button class="catc" onclick="selCat(this)">배달</button>
+      <button class="catc" onclick="selCat(this)">사무직</button>
       <button class="catc" onclick="selCat(this)">기타 Other</button>
     </div>
     <div class="wsep"></div>
@@ -2993,6 +3044,12 @@ window.searchListings = async function() {
     <textarea class="wta" placeholder="복리후생, 유니폼, 식사 제공 여부 등 추가 내용을 적어주세요."></textarea>
     <div class="wsec">연락처 Contact</div>
     <input class="winp" type="tel" placeholder="+1 (949) 000-0000">
+    <div class="wsep"></div>
+    <div onclick="toggleUrgent('job')" id="jobUrgent" style="display:flex;align-items:center;gap:10px;background:var(--or-bg);border:1.5px solid var(--or-bd);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:14px">
+      <div style="font-size:18px">🚀</div>
+      <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--or)">급구 부스트</div><div style="font-size:11px;color:var(--muted);margin-top:1px">$4.99 · 3일간 최상단 고정 노출</div></div>
+      <div id="jobUrgentChk" style="width:22px;height:22px;border-radius:6px;border:2px solid var(--or-bd);display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff"></div>
+    </div>
     <button class="wsub">공고 올리기 Post Job</button>
     <div style="height:24px"></div>
   </div>
@@ -3069,7 +3126,18 @@ window.searchListings = async function() {
     <div class="dhead-t">업체 등록하기 Register Business</div>
   </div>
   <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--w);padding:18px">
-    <div class="wsec">업체 사진 (최대 10장)</div>
+    <!-- 무료/유료 선택 -->
+    <div style="display:flex;gap:8px;margin-bottom:18px">
+      <button id="bizFree" onclick="selectBizPlan('free')" style="flex:1;padding:14px 10px;border-radius:12px;border:2px solid var(--or);background:var(--or-bg);cursor:pointer;font-family:inherit;text-align:left">
+        <div style="font-size:14px;font-weight:800;color:var(--or)">무료 등록</div>
+        <div style="font-size:11px;color:var(--mid);margin-top:3px">사진 3장 · 기본 프로필</div>
+      </button>
+      <button id="bizPaid" onclick="selectBizPlan('paid')" style="flex:1;padding:14px 10px;border-radius:12px;border:2px solid var(--line);background:var(--w);cursor:pointer;font-family:inherit;text-align:left">
+        <div style="font-size:14px;font-weight:800;color:var(--ink)">유료 광고</div>
+        <div style="font-size:11px;color:var(--mid);margin-top:3px">사진 10장 · 쿠폰 · 상단노출</div>
+      </button>
+    </div>
+    <div class="wsec"><span id="bizPhotoLabel">업체 사진 (최대 3장)</span></div>
     <div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-bottom:5px">
       <label class="phbox" style="cursor:pointer;position:relative;overflow:hidden"><input type="file" accept="image/*" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" onchange="addBizPhoto(this)"><svg viewBox="0 0 24 24" style="pointer-events:none"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span style="pointer-events:none">대표 사진</span></label><div id="bizPhotoPreview" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
@@ -3077,8 +3145,8 @@ window.searchListings = async function() {
     <div class="wsec">업종 카테고리</div>
     <div class="catgrid">
       <button class="catc on" onclick="selCat(this)">맛집 Restaurant</button>
-      <button class="catc" onclick="selCat(this)">카페 Cafe</button>
-      <button class="catc" onclick="selCat(this)">뷰티/미용 Beauty</button>
+      <button class="catc" onclick="selCat(this)">카페</button>
+      <button class="catc" onclick="selCat(this)">뷰티/미용</button>
       <button class="catc" onclick="selCat(this)">이사 Moving</button>
       <button class="catc" onclick="selCat(this)">교육 Education</button>
       <button class="catc" onclick="selCat(this)">의료/건강 Health</button>
@@ -3121,7 +3189,15 @@ window.searchListings = async function() {
       </div>
       <button onclick="showSc('sponsor')" style="width:100%;padding:10px;background:var(--or);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">광고 패키지 자세히 보기</button>
     </div>
-    <button class="wsub">무료로 등록하기 Register Free</button>
+    <!-- 쿠폰 (유료 전용) -->
+    <div id="bizCouponSection" style="display:none">
+      <div class="wsep"></div>
+      <div class="wsec">쿠폰 / 혜택 등록</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">고객에게 보여줄 할인 쿠폰을 등록하세요 (유료 광고 혜택)</div>
+      <input id="bizCoupon1" placeholder="예: 첫 방문 10% 할인" style="width:100%;padding:11px;border:1px solid var(--line);border-radius:9px;font-size:13px;font-family:inherit;margin-bottom:8px">
+      <input id="bizCoupon2" placeholder="예: 음료 1+1 (오렌지 등급 이상)" style="width:100%;padding:11px;border:1px solid var(--line);border-radius:9px;font-size:13px;font-family:inherit;margin-bottom:8px">
+    </div>
+    <button class="wsub" id="bizSubmitBtn" onclick="submitBizRegister()">무료로 등록하기 Register Free</button>
     <div style="height:24px"></div>
   </div>
 </div>
@@ -3453,7 +3529,7 @@ window.searchListings = async function() {
     <div class="pth pth-add">+</div>
   </div>
   <div class="dscroll">
-    <div class="seller-row">
+    <div class="seller-row" onclick="var l=window._selectedListing; if(l&&l.userId){window.viewUserPosts(l.userId,l.sellerNickname);}" style="cursor:pointer">
       <div class="sav">J</div>
       <div><div class="snm">Jason K.</div><div class="sinf">얼바인 &#183; 거래 28회</div></div>
       <div class="srt"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>4.9</div>
@@ -3510,7 +3586,7 @@ window.searchListings = async function() {
       </div>
     </div>
 
-    <div class="iad" style="margin:0 14px 8px"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">오렌지페이 안전 에스크로</div><div class="iad-s">거래 확인 전까지 안전 보관</div></div></div>
+    <div class="iad" style="margin:0 14px 8px"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z"/></svg></div><div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">오렌지페이 안전 에스크로</div><div class="iad-s">거래 확인 전까지 안전 보관</div></div></div>
     <div style="height:80px"></div>
   </div>
   <div class="dfoot">
@@ -3655,7 +3731,7 @@ window.searchListings = async function() {
       <button class="catc" onclick="selCat(this)">유아동/장난감 Baby &amp; Kids</button>
       <button class="catc" onclick="selCat(this)">스포츠/레저 Sports</button>
       <button class="catc" onclick="selCat(this)">식물 Plants</button>
-      <button class="catc" onclick="selCat(this)">뷰티/미용 Beauty</button>
+      <button class="catc" onclick="selCat(this)">뷰티/미용</button>
       <button class="catc" onclick="selCat(this)">주방/생활 Kitchen</button>
       <button class="catc" onclick="selCat(this)">악기 Music</button>
       <button class="catc" onclick="selCat(this)">애완동물 Pets</button>
@@ -4223,6 +4299,7 @@ function showSc(n){
   document.getElementById('bnav').style.display=hide?'none':'flex';
   var fab=document.getElementById('fab');
   if(fab)fab.style.display=(n==='home')?'flex':'none';
+  if(n==='biz-write' && window.selectBizPlan) selectBizPlan('free');
 }
 
 function goHome(){
@@ -4250,11 +4327,78 @@ function switchMainById(pid){
   document.getElementById(pid).classList.add('on');
   if(pid==='p-comm' && window.loadCommunity) window.loadCommunity();
 }
+var subcatEng = {
+  '전체':'All','가전/전자':'Electronics','가구/인테리어':'Furniture','의류/잡화':'Fashion',
+  '도서/음반':'Books','유아동/장난감':'Kids','요식업':'F&B','리테일':'Retail','사무직':'Office',
+  '배달':'Delivery','레슨':'Lessons','렌트':'Rent','매매':'Buy','룸메이트':'Roommate',
+  '중고차':'Used Cars','맛집':'Restaurants','카페':'Cafe','뷰티/미용':'Beauty',
+  '이사/청소':'Moving','교육/학원':'Education','수다':'Chat','정보':'Info','질문':'Q&A','모임':'Gathering'
+};
 function selSub(el){
   var par=el.parentElement;
   par.querySelectorAll('.sch').forEach(function(c){c.classList.remove('on');});
   el.classList.add('on');
+  var label = el.textContent.trim();
+  var eng = subcatEng[label] || '';
+  var panel = el.closest('.panel');
+  if(panel){
+    var titleEl = panel.querySelector('[id^="secTitle-"]');
+    if(titleEl){
+      if(label==='전체'){ titleEl.innerHTML = '전체 <span style="font-size:12px;font-weight:600;color:var(--muted)">All</span>'; }
+      else { titleEl.innerHTML = label + (eng ? ' <span style="font-size:12px;font-weight:600;color:var(--muted)">'+eng+'</span>' : ''); }
+    }
+    if(panel.id==='p-market' && window.loadListings){ window._marketFilter = (label==='전체')?null:label; window.loadListings(); }
+    // 선택한 소카테고리 저장 (글쓰기 시 미리 채움)
+    window._selectedSubcat = (label==='전체') ? null : label;
+  }
 }
+
+// 업체 등록 무료/유료 선택
+window._bizPlan = 'free';
+function selectBizPlan(plan){
+  window._bizPlan = plan;
+  var freeBtn = document.getElementById('bizFree');
+  var paidBtn = document.getElementById('bizPaid');
+  var photoLbl = document.getElementById('bizPhotoLabel');
+  var coupon = document.getElementById('bizCouponSection');
+  var submitBtn = document.getElementById('bizSubmitBtn');
+  if(plan==='free'){
+    if(freeBtn){ freeBtn.style.border='2px solid var(--or)'; freeBtn.style.background='var(--or-bg)'; freeBtn.querySelector('div').style.color='var(--or)'; }
+    if(paidBtn){ paidBtn.style.border='2px solid var(--line)'; paidBtn.style.background='var(--w)'; paidBtn.querySelector('div').style.color='var(--ink)'; }
+    if(photoLbl) photoLbl.textContent='업체 사진 (최대 3장)';
+    if(coupon) coupon.style.display='none';
+    if(submitBtn) submitBtn.textContent='무료로 등록하기 Register Free';
+  } else {
+    if(paidBtn){ paidBtn.style.border='2px solid var(--or)'; paidBtn.style.background='var(--or-bg)'; paidBtn.querySelector('div').style.color='var(--or)'; }
+    if(freeBtn){ freeBtn.style.border='2px solid var(--line)'; freeBtn.style.background='var(--w)'; freeBtn.querySelector('div').style.color='var(--ink)'; }
+    if(photoLbl) photoLbl.textContent='업체 사진 (최대 10장)';
+    if(coupon) coupon.style.display='block';
+    if(submitBtn) submitBtn.textContent='유료 광고 신청하기 Apply Ad';
+  }
+}
+
+
+// 급구/급매 부스트 토글
+window._urgentBoost = {};
+function toggleUrgent(type){
+  window._urgentBoost[type] = !window._urgentBoost[type];
+  var on = window._urgentBoost[type];
+  var box = document.getElementById(type+'Urgent');
+  var chk = document.getElementById(type+'UrgentChk');
+  if(chk){
+    chk.style.background = on ? 'var(--or)' : '#fff';
+    chk.style.borderColor = on ? 'var(--or)' : 'var(--or-bd)';
+    chk.textContent = on ? '✓' : '';
+  }
+  if(box){
+    box.style.background = on ? 'var(--or)' : 'var(--or-bg)';
+    var texts = box.querySelectorAll('div');
+    // 첫 텍스트(제목) 색
+    var title = box.querySelector('div[style*="font-weight:700"]');
+    if(title) title.style.color = on ? '#fff' : 'var(--or)';
+  }
+}
+
 function selCat(el){
   document.querySelectorAll('.catc').forEach(function(c){c.classList.remove('on');});
   el.classList.add('on');
@@ -4397,9 +4541,12 @@ var spDB={
 // ════ 프리미엄 배너 로테이션 ════
 // 카테고리별 광고주 매칭 (여러 업체면 번갈아 노출)
 var rotatorAds = {
+  rotMarket: ['hmart','boba','nara','resume','academy'],
   rotJobs:   ['resume','academy'],
   rotRealty: ['nara'],
-  rotBiz:    ['boba','hmart']
+  rotBiz:    ['boba','hmart'],
+  rotComm:   ['hmart','academy','nara'],
+  rotDonate: ['hmart','boba']
 };
 var rotatorIndex = {};
 
@@ -4423,14 +4570,27 @@ function updateRotator(rid){
   var s = el.querySelector('.rot-sub');
   if(t) t.textContent = d.t;
   if(s) s.textContent = d.c;
+  // 사진 지원: spDB에 img(base64/URL) 있으면 아이콘 자리에 표시
+  var iconBox = el.querySelector('.rot-icon');
+  if(iconBox){
+    if(d.img){
+      iconBox.style.backgroundImage = 'url('+d.img+')';
+      iconBox.style.backgroundSize = 'cover';
+      iconBox.style.backgroundPosition = 'center';
+      iconBox.textContent = '';
+    } else {
+      iconBox.style.backgroundImage = '';
+      iconBox.textContent = '🍊';
+    }
+  }
   rotatorIndex[rid] = idx + 1;
 }
 
 function startRotators(){
-  ['rotJobs','rotRealty','rotBiz'].forEach(function(rid){ updateRotator(rid); });
+  ['rotMarket','rotJobs','rotRealty','rotBiz','rotComm','rotDonate'].forEach(function(rid){ updateRotator(rid); });
   // 5초마다 로테이션 (업체 여러 개일 때만 효과)
   setInterval(function(){
-    ['rotJobs','rotRealty','rotBiz'].forEach(function(rid){
+    ['rotMarket','rotJobs','rotRealty','rotBiz','rotComm','rotDonate'].forEach(function(rid){
       var ads = rotatorAds[rid] || [];
       if(ads.length > 1) updateRotator(rid);
     });
@@ -4616,6 +4776,7 @@ function showSc(n){
   document.getElementById('bnav').style.display=hide?'none':'flex';
   var fab=document.getElementById('fab');
   if(fab)fab.style.display=(n==='home')?'flex':'none';
+  if(n==='biz-write' && window.selectBizPlan) selectBizPlan('free');
 }
 
 function goHome(){
@@ -4643,11 +4804,78 @@ function switchMainById(pid){
   document.getElementById(pid).classList.add('on');
   if(pid==='p-comm' && window.loadCommunity) window.loadCommunity();
 }
+var subcatEng = {
+  '전체':'All','가전/전자':'Electronics','가구/인테리어':'Furniture','의류/잡화':'Fashion',
+  '도서/음반':'Books','유아동/장난감':'Kids','요식업':'F&B','리테일':'Retail','사무직':'Office',
+  '배달':'Delivery','레슨':'Lessons','렌트':'Rent','매매':'Buy','룸메이트':'Roommate',
+  '중고차':'Used Cars','맛집':'Restaurants','카페':'Cafe','뷰티/미용':'Beauty',
+  '이사/청소':'Moving','교육/학원':'Education','수다':'Chat','정보':'Info','질문':'Q&A','모임':'Gathering'
+};
 function selSub(el){
   var par=el.parentElement;
   par.querySelectorAll('.sch').forEach(function(c){c.classList.remove('on');});
   el.classList.add('on');
+  var label = el.textContent.trim();
+  var eng = subcatEng[label] || '';
+  var panel = el.closest('.panel');
+  if(panel){
+    var titleEl = panel.querySelector('[id^="secTitle-"]');
+    if(titleEl){
+      if(label==='전체'){ titleEl.innerHTML = '전체 <span style="font-size:12px;font-weight:600;color:var(--muted)">All</span>'; }
+      else { titleEl.innerHTML = label + (eng ? ' <span style="font-size:12px;font-weight:600;color:var(--muted)">'+eng+'</span>' : ''); }
+    }
+    if(panel.id==='p-market' && window.loadListings){ window._marketFilter = (label==='전체')?null:label; window.loadListings(); }
+    // 선택한 소카테고리 저장 (글쓰기 시 미리 채움)
+    window._selectedSubcat = (label==='전체') ? null : label;
+  }
 }
+
+// 업체 등록 무료/유료 선택
+window._bizPlan = 'free';
+function selectBizPlan(plan){
+  window._bizPlan = plan;
+  var freeBtn = document.getElementById('bizFree');
+  var paidBtn = document.getElementById('bizPaid');
+  var photoLbl = document.getElementById('bizPhotoLabel');
+  var coupon = document.getElementById('bizCouponSection');
+  var submitBtn = document.getElementById('bizSubmitBtn');
+  if(plan==='free'){
+    if(freeBtn){ freeBtn.style.border='2px solid var(--or)'; freeBtn.style.background='var(--or-bg)'; freeBtn.querySelector('div').style.color='var(--or)'; }
+    if(paidBtn){ paidBtn.style.border='2px solid var(--line)'; paidBtn.style.background='var(--w)'; paidBtn.querySelector('div').style.color='var(--ink)'; }
+    if(photoLbl) photoLbl.textContent='업체 사진 (최대 3장)';
+    if(coupon) coupon.style.display='none';
+    if(submitBtn) submitBtn.textContent='무료로 등록하기 Register Free';
+  } else {
+    if(paidBtn){ paidBtn.style.border='2px solid var(--or)'; paidBtn.style.background='var(--or-bg)'; paidBtn.querySelector('div').style.color='var(--or)'; }
+    if(freeBtn){ freeBtn.style.border='2px solid var(--line)'; freeBtn.style.background='var(--w)'; freeBtn.querySelector('div').style.color='var(--ink)'; }
+    if(photoLbl) photoLbl.textContent='업체 사진 (최대 10장)';
+    if(coupon) coupon.style.display='block';
+    if(submitBtn) submitBtn.textContent='유료 광고 신청하기 Apply Ad';
+  }
+}
+
+
+// 급구/급매 부스트 토글
+window._urgentBoost = {};
+function toggleUrgent(type){
+  window._urgentBoost[type] = !window._urgentBoost[type];
+  var on = window._urgentBoost[type];
+  var box = document.getElementById(type+'Urgent');
+  var chk = document.getElementById(type+'UrgentChk');
+  if(chk){
+    chk.style.background = on ? 'var(--or)' : '#fff';
+    chk.style.borderColor = on ? 'var(--or)' : 'var(--or-bd)';
+    chk.textContent = on ? '✓' : '';
+  }
+  if(box){
+    box.style.background = on ? 'var(--or)' : 'var(--or-bg)';
+    var texts = box.querySelectorAll('div');
+    // 첫 텍스트(제목) 색
+    var title = box.querySelector('div[style*="font-weight:700"]');
+    if(title) title.style.color = on ? '#fff' : 'var(--or)';
+  }
+}
+
 function selCat(el){
   document.querySelectorAll('.catc').forEach(function(c){c.classList.remove('on');});
   el.classList.add('on');
