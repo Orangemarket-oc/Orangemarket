@@ -1414,10 +1414,10 @@ window.searchListings = async function() {
 
       // 유저 매물
       const listQ = query(collection(db,'listings'),
-        where('userId','==',userId), where('status','==','active'),
-        orderBy('createdAt','desc'), limit(10));
-      const listSnap = await getDocs(listQ);
-      const listings = listSnap.docs.map(d=>({id:d.id,...d.data()}));
+        where('userId','==',userId), where('status','==','active'), limit(20));
+      const listSnap = await getDocs(listQ).catch(function(){return {docs:[]};});
+      const listings = listSnap.docs.map(d=>({id:d.id,...d.data()}))
+        .sort(function(a,b){return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0);}).slice(0,10);
       const listContainer = document.getElementById('userListings');
       if (listContainer) {
         if (listings.length===0) {
@@ -1436,8 +1436,8 @@ window.searchListings = async function() {
 
       // 유저 리뷰
       const revQ = query(collection(db,'reviews'),
-        where('targetId','==',userId), orderBy('createdAt','desc'), limit(5));
-      const revSnap = await getDocs(revQ);
+        where('targetId','==',userId), limit(10));
+      const revSnap = await getDocs(revQ).catch(function(){return {docs:[],empty:true};});
       const revContainer = document.getElementById('userReviews');
       if (revContainer) {
         if (revSnap.empty) {
@@ -1453,6 +1453,28 @@ window.searchListings = async function() {
           });
         }
       }
+    
+      // 유저 게시글
+      var postQ = query(collection(db,'community'), where('userId','==',userId), limit(20));
+      var postSnap = await getDocs(postQ).catch(function(){return {docs:[]};});
+      var posts = postSnap.docs.map(function(d){return Object.assign({id:d.id},d.data());})
+        .sort(function(a,b){return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0);});
+      var postContainer = document.getElementById('userPosts');
+      if (postContainer) {
+        if (posts.length===0) {
+          postContainer.innerHTML='<div style="text-align:center;padding:30px;color:var(--muted)">작성한 글이 없어요</div>';
+        } else {
+          postContainer.innerHTML='';
+          posts.forEach(function(p){
+            var el=document.createElement('div');
+            el.style.cssText='padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer';
+            el.innerHTML='<div style="font-size:13px;font-weight:600;color:#3E2510;margin-bottom:2px">'+(p.title||'')+'</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(p.body||'')+'</div>';
+            el.onclick=function(){ window._openPostDetail(p); };
+            postContainer.appendChild(el);
+          });
+        }
+      }
+    
     } catch(e) { console.log('유저 프로필 오류:', e.message); }
   };
 
@@ -2056,57 +2078,70 @@ window.searchListings = async function() {
 
   // 게시글 전체 보기
   window._openPostDetail = function(p) {
-    var catColors = { '수다':'#E8571A', '질문':'#1D5FA6', '정보':'#3A7D52', '모임':'#B8860B' };
-    var catKey = (p.category || '수다').replace(/\s.*/, '');
+    var catColors = { '\uc218\ub2e4':'#E8571A', '\uc9c8\ubb38':'#1D5FA6', '\uc815\ubcf4':'#3A7D52', '\ubaa8\uc784':'#B8860B' };
+    var catKey = (p.category || '\uc218\ub2e4').replace(/\s.*/, '');
     var color = catColors[catKey] || '#E8571A';
     var liked = (JSON.parse(localStorage.getItem('om_liked_posts')||'[]')).indexOf(p.id) >= 0;
 
+    var old = document.getElementById('om_sheet');
+    if (old) old.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'om_sheet';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:500;display:flex;flex-direction:column;justify-content:flex-end';
+    var bg = document.createElement('div');
+    bg.style.cssText = 'flex:1;background:rgba(0,0,0,.45)';
+    bg.addEventListener('click', function(){ overlay.remove(); });
+    var panel = document.createElement('div');
+    panel.style.cssText = 'background:#fff;border-radius:22px 22px 0 0;max-height:88vh;display:flex;flex-direction:column';
+
+    // 헤더 (카테고리 + 닫기)
+    var header = document.createElement('div');
+    header.style.cssText = 'padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-shrink:0';
+    header.innerHTML = '<span style="font-size:13px;font-weight:700;color:' + color + ';background:' + color + '18;padding:4px 11px;border-radius:20px">' + catKey + '</span>';
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = '\u2715';
+    closeBtn.style.cssText = 'background:none;border:none;font-size:18px;color:var(--muted);cursor:pointer';
+    closeBtn.addEventListener('click', function(){ overlay.remove(); });
+    header.appendChild(closeBtn);
+
+    // 본문 (스크롤)
+    var body = document.createElement('div');
+    body.style.cssText = 'overflow-y:auto;flex:1;padding:18px 16px';
     var imgs = '';
     if (p.images && p.images.length) {
       imgs = '<div style="display:flex;flex-direction:column;gap:8px;margin:14px 0">';
-      p.images.forEach(function(src){
-        imgs += '<img src="' + src + '" style="width:100%;border-radius:10px;display:block">';
-      });
+      p.images.forEach(function(src){ imgs += '<img src="' + src + '" style="width:100%;border-radius:10px;display:block">'; });
       imgs += '</div>';
     }
-
-    var bodyHtml =
-      '<div style="padding:18px 16px">'
-      + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
-      + '<span style="font-size:12px;font-weight:700;color:' + color + ';background:' + color + '18;padding:3px 10px;border-radius:20px">' + catKey + '</span>'
-      + '<span style="font-size:12px;color:var(--muted)">· ' + _timeAgo(p.createdAt && p.createdAt.seconds) + '</span></div>'
-      + '<div style="font-size:18px;font-weight:800;color:#3E2510;margin-bottom:10px">' + (p.title||'') + '</div>'
-      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
-      + '<div style="width:32px;height:32px;border-radius:50%;background:var(--or-bg);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--or)">' + (p.nickname||'?').charAt(0) + '</div>'
-      + '<div><div style="font-size:13px;font-weight:600;color:#3E2510">' + (p.nickname||'이웃') + '</div>'
-      + '<div style="font-size:11px;color:var(--muted)">' + (p.neighborhood||'OC') + '</div></div></div>'
+    body.innerHTML =
+      '<div style="font-size:19px;font-weight:800;color:#3E2510;margin-bottom:10px">' + (p.title||'') + '</div>'
+      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;cursor:pointer" onclick="window.viewUserPosts(\'' + (p.userId||'') + '\',\'' + (p.nickname||'\uc774\uc6c3') + '\')">'
+      + '<div style="width:34px;height:34px;border-radius:50%;background:var(--or-bg);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--or)">' + (p.nickname||'?').charAt(0) + '</div>'
+      + '<div><div style="font-size:13px;font-weight:600;color:#3E2510">' + (p.nickname||'\uc774\uc6c3') + '</div>'
+      + '<div style="font-size:11px;color:var(--muted)">' + (p.neighborhood||'OC') + ' \u00b7 ' + _timeAgo(p.createdAt && p.createdAt.seconds) + '</div></div></div>'
       + '<div style="font-size:15px;color:var(--ink);line-height:1.7">' + (p.body||'') + '</div>'
-      + imgs + '</div>';
+      + imgs;
 
-    var p2 = Promise.resolve([]);
-    window._showSheet('', p2);
-    setTimeout(function(){
-      var sheet = document.getElementById('om_sheet');
-      if (!sheet) return;
-      var body = sheet.querySelector('div[style*="overflow-y:auto"]');
-      if (body) {
-        body.innerHTML = bodyHtml;
-        // 좋아요/댓글 버튼
-        var footer = document.createElement('div');
-        footer.style.cssText = 'display:flex;gap:16px;padding:14px 16px;border-top:1px solid var(--line)';
-        var likeBtn = document.createElement('button');
-        likeBtn.style.cssText = 'display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:' + (liked?'var(--or)':'var(--muted)');
-        likeBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:' + (liked?'var(--or)':'none') + ';stroke:' + (liked?'var(--or)':'var(--muted)') + ';stroke-width:2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>' + (p.likeCount||0) + '</span>';
-        likeBtn.onclick = function(){ window._toggleLike(p.id, likeBtn); };
-        var cmtBtn = document.createElement('button');
-        cmtBtn.style.cssText = 'display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:var(--muted)';
-        cmtBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:var(--muted);stroke-width:2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>댓글 ' + (p.commentCount||0) + '</span>';
-        cmtBtn.onclick = function(){ window._openComments(p); };
-        footer.appendChild(likeBtn);
-        footer.appendChild(cmtBtn);
-        body.appendChild(footer);
-      }
-    }, 50);
+    // 좋아요/댓글 버튼
+    var footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;gap:18px;padding:14px 16px;border-top:1px solid var(--line);flex-shrink:0';
+    var likeBtn = document.createElement('button');
+    likeBtn.style.cssText = 'display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:' + (liked?'var(--or)':'var(--muted)');
+    likeBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:' + (liked?'var(--or)':'none') + ';stroke:' + (liked?'var(--or)':'var(--muted)') + ';stroke-width:2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>' + (p.likeCount||0) + '</span>';
+    likeBtn.onclick = function(){ window._toggleLike(p.id, likeBtn); };
+    var cmtBtn = document.createElement('button');
+    cmtBtn.style.cssText = 'display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:var(--muted)';
+    cmtBtn.innerHTML = '<svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:none;stroke:var(--muted);stroke-width:2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>\ub313\uae00 ' + (p.commentCount||0) + '</span>';
+    cmtBtn.onclick = function(){ window._openComments(p); };
+    footer.appendChild(likeBtn);
+    footer.appendChild(cmtBtn);
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    panel.appendChild(footer);
+    overlay.appendChild(bg);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
   };
 
   window._toggleLike = async function(postId, btn) {
@@ -2244,6 +2279,76 @@ window.searchListings = async function() {
     } catch(e) {
       alert('삭제 실패: ' + e.message);
     }
+  };
+
+  // 닉네임 클릭 → 유저 프로필 (게시글 포함)
+  window.viewUserPosts = function(userId, nickname) {
+    var sh = document.getElementById('om_sheet'); if (sh) sh.remove();
+    if (!userId || userId === 'local_me' || String(userId).indexOf('demo')===0) {
+      alert((nickname||'이 사용자') + '님의 프로필이에요.\n(데모 게시글은 프로필 조회가 제한돼요)');
+      return;
+    }
+    if (window.viewUserProfile) window.viewUserProfile(userId);
+  };
+
+  // ════ 광고 신청 ════
+  window.showApplyAd = function() {
+    var old = document.getElementById('om_sheet');
+    if (old) old.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'om_sheet';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:500;display:flex;flex-direction:column;justify-content:flex-end';
+    var bg = document.createElement('div');
+    bg.style.cssText = 'flex:1;background:rgba(0,0,0,.45)';
+    bg.addEventListener('click', function(){ overlay.remove(); });
+    var panel = document.createElement('div');
+    panel.style.cssText = 'background:#fff;border-radius:22px 22px 0 0;max-height:88vh;display:flex;flex-direction:column;padding:0 0 20px';
+    panel.innerHTML =
+      '<div style="padding:16px 18px;border-bottom:1px solid var(--line);font-size:16px;font-weight:800;color:#3E2510">광고 신청</div>'
+      + '<div style="overflow-y:auto;padding:18px">'
+      + '<div style="font-size:13px;color:var(--mid);margin-bottom:14px;line-height:1.6">신청서를 보내주시면 입금 안내를 드릴게요. 입금 확인 후 노출됩니다. 🍊</div>'
+      + '<div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">업체명</div>'
+      + '<input id="adBizName" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:14px" placeholder="예: H Mart 얼바인점">'
+      + '<div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">등급</div>'
+      + '<select id="adTier" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:14px">'
+      + '<option value="반짝 $29.99/2주">⚡ 반짝 — $29.99 / 2주</option>'
+      + '<option value="오렌지 $39.99/4주">🍊 오렌지 — $39.99 / 4주</option>'
+      + '<option value="프리미엄 $49.99/4주">👑 프리미엄 — $49.99 / 4주</option></select>'
+      + '<div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">카테고리</div>'
+      + '<select id="adCategory" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:14px">'
+      + '<option>마켓</option><option>알바·레슨</option><option>부동산·차</option><option>업체·맛집</option><option>커뮤니티</option></select>'
+      + '<div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">연락처 (전화/이메일)</div>'
+      + '<input id="adContact" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:18px" placeholder="연락 가능한 번호 또는 이메일">'
+      + '<button onclick="submitAdRequest()" style="width:100%;padding:14px;background:var(--or);border:none;border-radius:12px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">신청서 보내기</button>'
+      + '<button onclick="document.getElementById(\'om_sheet\').remove()" style="width:100%;padding:12px;background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;font-family:inherit;margin-top:8px">취소</button>'
+      + '</div>';
+    overlay.appendChild(bg);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+  };
+
+  window.submitAdRequest = async function() {
+    var name = (document.getElementById('adBizName')||{}).value || '';
+    var tier = (document.getElementById('adTier')||{}).value || '';
+    var cat = (document.getElementById('adCategory')||{}).value || '';
+    var contact = (document.getElementById('adContact')||{}).value || '';
+    if (!name.trim()) { alert('업체명을 입력해주세요.'); return; }
+    if (!contact.trim()) { alert('연락처를 입력해주세요.'); return; }
+    var amount = tier.match(/\$[\d.]+/);
+    try {
+      await addDoc(collection(db,'adRequests'), {
+        businessName: name.trim(),
+        tier: tier.split(' ')[0],
+        amount: amount ? amount[0] : '',
+        category: cat,
+        contact: contact.trim(),
+        status: 'pending',
+        createdAt: serverTimestamp()
+      });
+    } catch(e) { console.log('광고신청:', e.message); }
+    var sh = document.getElementById('om_sheet'); if (sh) sh.remove();
+    alert('광고 신청이 접수되었어요! 🍊\n\n입금 안내:\n💸 Zelle/Venmo: orangemarket.oc@gmail.com\n메모에 업체명을 적어주세요.\n입금 확인 후 노출됩니다.');
+    showSc('home'); setNav('home');
   };
 </script>
 </head>
@@ -3704,6 +3809,11 @@ window.searchListings = async function() {
     <div id="userReviews" style="background:#fff">
       <div style="text-align:center;padding:40px;color:var(--muted)">로딩 중...</div>
     </div>
+    <!-- 유저 게시글 -->
+    <div style="padding:14px 16px;font-size:13px;font-weight:700;color:#3E2510;border-bottom:1px solid var(--line);background:#fff;margin-top:8px">작성한 글</div>
+    <div id="userPosts" style="background:#fff">
+      <div style="text-align:center;padding:30px;color:var(--muted)">불러오는 중...</div>
+    </div>
   </div>
 </div>
 
@@ -3974,8 +4084,8 @@ window.searchListings = async function() {
       <div class="pmi" onclick="showSc('support')" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg></div><span class="pmi-t">고객 지원 Support</span><span class="pmi-r">&#8250;</span></div>
       <div class="pmi" onclick="showSc('terms')" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><span class="pmi-t">이용 약관 / 개인정보 Terms &amp; Privacy</span><span class="pmi-r">&#8250;</span></div>
     </div>
-        <div class="pmi" onclick="showBlockedList()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div><span class="pmi-t">차단 목록 Blocked Users</span><svg class="pmi-ar" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
-        <div class="pmi" onclick="deleteAccount()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div><span class="pmi-t" style="color:var(--red)">회원 탈퇴 Delete Account</span><svg class="pmi-ar" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+        <div class="pmi" onclick="showBlockedList()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div><span class="pmi-t">차단 목록 Blocked Users</span><span class="pmi-r">&#8250;</span></div>
+        <div class="pmi" onclick="deleteAccount()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div><span class="pmi-t" style="color:var(--red)">회원 탈퇴 Delete Account</span><span class="pmi-r">&#8250;</span></div>
   </div>
   <div id="logoutSection" style="display:none" id="logoutSection" style="display:none;margin:4px 13px 20px">
     <button onclick="logoutUser()" style="width:100%;padding:14px;background:#FDF0EE;border:1.5px solid #F5C6C2;border-radius:12px;color:#C0392B;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">
@@ -3988,56 +4098,58 @@ window.searchListings = async function() {
 <!-- ══ 스폰서 페이지 ══ -->
 <div class="sc" id="sc-ad-info">
   <div class="sbar">
-    <button class="back-btn" onclick="showSc('home')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
-    <span class="sbar-t">업체 광고 안내</span><span></span>
+    <button class="back-btn" onclick="showSc('home');setNav('home')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <span class="sbar-t">업체 광고 안내</span>
+    <span></span>
   </div>
-  <div style="flex:1;overflow-y:auto;background:var(--cream)">
-    <div style="background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:28px 20px 24px;text-align:center">
-      <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:8px">🍊 오렌지마켓 업체 광고</div>
-      <div style="font-size:13px;color:rgba(255,255,255,.65);line-height:1.7">OC 한인 이웃에게 직접 닿는<br>가장 효과적인 로컬 광고</div>
+  <div style="flex:1;overflow-y:auto;background:var(--cream);padding:18px">
+    <div style="font-size:18px;font-weight:800;color:var(--ink);margin-bottom:4px">우리 가게를 더 많은 이웃에게 🍊</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6">OC 한인 이웃들에게 우리 업체를 노출하세요. 등급별로 노출 위치와 혜택이 달라요.</div>
+
+    <!-- 반짝 (옐로) -->
+    <div style="background:#fff;border:1.5px solid #E8C547;border-radius:16px;padding:18px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:20px">⚡</span>
+          <div><div style="font-size:15px;font-weight:800;color:#B8860B">반짝 Flash</div>
+          <div style="font-size:11px;color:var(--muted)">짧고 굵게</div></div>
+        </div>
+        <div style="text-align:right"><div style="font-size:20px;font-weight:800;color:#B8860B">$29.99</div><div style="font-size:11px;color:var(--muted)">2주</div></div>
+      </div>
+      <div style="font-size:12.5px;color:var(--mid);line-height:2">✓ 카테고리 리스트 <b>상단 노출</b><br>✓ 업체 사진 10장<br>✓ 쿠폰 1개 등록<br>✓ 이웃맵 <b>반짝핀</b> 표시</div>
     </div>
-    <div style="padding:12px 13px 80px">
 
-      <div style="background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div><div style="font-size:16px;font-weight:800;color:#3E2510">무료 Free</div><div style="font-size:11px;color:var(--muted)">일단 시작해보세요</div></div>
-          <div style="font-size:22px;font-weight:800;color:var(--green)">$0</div>
+    <!-- 오렌지 -->
+    <div style="background:#fff;border:1.5px solid var(--or);border-radius:16px;padding:18px;margin-bottom:14px;position:relative">
+      <div style="position:absolute;top:-10px;left:18px;background:var(--or);color:#fff;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px">인기</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:20px">🍊</span>
+          <div><div style="font-size:15px;font-weight:800;color:var(--or)">오렌지 Orange</div>
+          <div style="font-size:11px;color:var(--muted)">꾸준한 노출</div></div>
         </div>
-        <div style="font-size:12px;color:var(--mid);line-height:1.9">✓ 업체 프로필 &nbsp;✓ 사진 3장<br>✓ 업체·맛집 탭 기본 노출<br><span style="color:var(--muted)">— 이웃맵 없음 &nbsp;— 쿠폰 없음</span></div>
-        <button onclick="showSc('biz-write')" style="width:100%;margin-top:12px;padding:11px;background:#fff;border:1.5px solid var(--line);border-radius:10px;color:#3E2510;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">무료로 시작하기</button>
+        <div style="text-align:right"><div style="font-size:20px;font-weight:800;color:var(--or)">$39.99</div><div style="font-size:11px;color:var(--muted)">4주</div></div>
       </div>
-
-      <div style="background:linear-gradient(135deg,#FFFBF8,#FFF3EC);border:1.5px solid var(--or-bd);border-radius:14px;padding:16px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div><div style="font-size:16px;font-weight:800;color:#3E2510">반짝 ⚡</div><div style="font-size:11px;color:var(--muted)">단기 집중 노출</div></div>
-          <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:var(--or)">$19.99</div><div style="font-size:11px;color:var(--muted)">/2주</div></div>
-        </div>
-        <div style="font-size:12px;color:var(--mid);line-height:1.9">✓ 목록 최상단 고정<br>✓ 사진 10장 &nbsp;✓ 쿠폰 1개 &nbsp;✓ 이웃맵 기본 핀<br><span style="color:var(--muted)">— 홈 배너 없음 &nbsp;— 오렌지픽 없음</span></div>
-        <button style="width:100%;margin-top:12px;padding:11px;background:var(--or-bg);border:1.5px solid var(--or-bd);border-radius:10px;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">반짝 시작 — $19.99</button>
-      </div>
-
-      <div style="background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div><div style="font-size:16px;font-weight:800;color:#3E2510">베이직 Basic</div><div style="font-size:11px;color:var(--muted)">배너 + 오렌지픽</div></div>
-          <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:var(--or)">$29.99</div><div style="font-size:11px;color:var(--muted)">/월</div></div>
-        </div>
-        <div style="font-size:12px;color:var(--mid);line-height:1.9">✓ 반짝 혜택 포함<br>✓ 홈 배너 로테이션 &nbsp;✓ 오렌지픽 🍊<br>✓ 이웃맵 강조 핀 &nbsp;✓ 쿠폰 2개</div>
-        <button style="width:100%;margin-top:12px;padding:11px;background:var(--or-bg);border:1.5px solid var(--or-bd);border-radius:10px;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">베이직 시작 — $29.99</button>
-      </div>
-
-      <div style="background:#fff;border:2px solid var(--or);border-radius:14px;padding:16px;margin-bottom:10px;position:relative;overflow:hidden">
-        <div style="position:absolute;top:0;right:0;background:var(--or);color:#fff;font-size:10px;font-weight:700;padding:4px 12px;border-radius:0 14px 0 10px">인기</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div><div style="font-size:16px;font-weight:800;color:#3E2510">프로 Pro</div><div style="font-size:11px;color:var(--muted)">푸시알림 + 우선 배너</div></div>
-          <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:var(--or)">$59.99</div><div style="font-size:11px;color:var(--muted)">/월</div></div>
-        </div>
-        <div style="font-size:12px;color:var(--mid);line-height:1.9">✓ 베이직 혜택 포함<br>✓ 배너 우선 로테이션<br>✓ 푸시알림 월 4회 (반경 이웃 타겟)<br>✓ 이웃맵 프리미엄 핀 &nbsp;✓ 쿠폰 5개<br>✓ 월간 노출·클릭 리포트</div>
-        <button style="width:100%;margin-top:12px;padding:11px;background:var(--or);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">프로 시작 — $59.99</button>
-      </div>
-
-      
-
+      <div style="font-size:12.5px;color:var(--mid);line-height:2">✓ <b>게시글 사이 광고</b> 노출<br>✓ 업체 사진 10장<br>✓ 쿠폰 2개 등록<br>✓ 이웃맵 <b>오렌지핀</b> 표시</div>
     </div>
+
+    <!-- 프리미엄 (브라운) -->
+    <div style="background:linear-gradient(135deg,#2C1A0E,#3E2510);border-radius:16px;padding:18px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:20px">👑</span>
+          <div><div style="font-size:15px;font-weight:800;color:#F5D0B0">프리미엄 Premium</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5)">최고 노출</div></div>
+        </div>
+        <div style="text-align:right"><div style="font-size:20px;font-weight:800;color:#F5D0B0">$49.99</div><div style="font-size:11px;color:rgba(255,255,255,.5)">4주</div></div>
+      </div>
+      <div style="font-size:12.5px;color:rgba(255,255,255,.85);line-height:2">✓ <b>배너 최상단</b> 고정 (모든 카테고리)<br>✓ 반짝 혜택 모두 포함<br>✓ 쿠폰 4개 등록<br>✓ 이웃맵 <b>프리미엄핀</b> 표시</div>
+    </div>
+
+    <div style="background:var(--or-bg);border-radius:12px;padding:14px;margin-top:6px">
+      <div style="font-size:12px;color:var(--mid);line-height:1.7">💡 광고 신청은 <b>업체 등록(무료)</b> 후 가능해요. 신청하시면 입금 안내(Zelle/Venmo)를 보내드리고, 확인 후 노출됩니다.</div>
+    </div>
+    <button class="wsub" style="margin-top:16px" onclick="showApplyAd()">광고 신청하기</button>
   </div>
 </div>
 
@@ -4833,6 +4945,18 @@ function checkAndGoProfile(){
 window.checkAndGoProfile = checkAndGoProfile;
 function openModal(){document.getElementById('modalBg').classList.add('open');}
 function closeModal(){document.getElementById('modalBg').classList.remove('open');}
+
+// 페이지 초기화 - 프리미엄 배너 로테이션 시작
+(function(){
+  function initOM(){
+    try { if(typeof startRotators === 'function') startRotators(); } catch(e){}
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initOM);
+  } else {
+    initOM();
+  }
+})();
 </script>
 </body>
 
