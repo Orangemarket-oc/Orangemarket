@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>OrangeMarket 관리자</title>
+<style>
+  :root{
+    --or:#E8571A; --or-d:#C44A12; --or-bg:#FEF3EC; --or-bd:#F5D0B0;
+    --ink:#3E2510; --mid:#6B4C2E; --muted:#9B8878; --line:#EDE5DA;
+    --cream:#FDFAF7; --ivory:#F6F1EB; --w:#fff;
+    --green:#3A7D52; --green-bg:#EFF7F2; --blue:#1D5FA6; --blue-bg:#EEF4FC;
+    --red:#C0392B; --red-bg:#FDF0EE; --amber:#B8860B; --amber-bg:#FBF5E6;
+    --r:10px; --rl:14px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--cream);color:var(--ink);font-size:14px;line-height:1.5}
+  .topnav{position:sticky;top:0;z-index:50;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:12px 16px}
+  .topnav-logo{display:flex;align-items:center;gap:10px}
+  .logo-mark{width:34px;height:34px;border-radius:9px;background:var(--or);display:flex;align-items:center;justify-content:center;font-size:18px}
+  .logo-text{font-size:15px;font-weight:800}
+  .logo-sub{font-size:10px;color:rgba(255,255,255,.55);letter-spacing:.1em;text-transform:uppercase}
+  .admin-status{font-size:11px;padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.12)}
+  .tabs{display:flex;background:var(--w);border-bottom:1px solid var(--line);position:sticky;top:58px;z-index:40;overflow-x:auto;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex-shrink:0;padding:14px 18px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2.5px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:6px}
+  .tab.on{color:var(--or);border-bottom-color:var(--or)}
+  .tab-badge{background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;min-width:18px;text-align:center}
+  .content{padding:16px;max-width:600px;margin:0 auto}
+  .view{display:none}
+  .view.on{display:block}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+  .stat{background:var(--w);border:1px solid var(--line);border-radius:var(--rl);padding:16px}
+  .stat-num{font-size:26px;font-weight:800;color:var(--ink);margin-bottom:2px}
+  .stat-lbl{font-size:12px;color:var(--muted)}
+  .stat.alert .stat-num{color:var(--red)}
+  .card{background:var(--w);border:1px solid var(--line);border-radius:var(--rl);padding:16px;margin-bottom:12px}
+  .card-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+  .card-title{font-size:14px;font-weight:700;color:var(--ink)}
+  .card-meta{font-size:11px;color:var(--muted);margin-top:2px}
+  .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px}
+  .badge-red{background:var(--red-bg);color:var(--red)}
+  .badge-green{background:var(--green-bg);color:var(--green)}
+  .badge-amber{background:var(--amber-bg);color:var(--amber)}
+  .badge-blue{background:var(--blue-bg);color:var(--blue)}
+  .reason-box{background:var(--ivory);border-radius:var(--r);padding:10px 12px;font-size:13px;color:var(--mid);margin-bottom:12px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{flex:1;min-width:90px;padding:10px;border-radius:var(--r);font-size:13px;font-weight:600;cursor:pointer;border:1.5px solid;font-family:inherit}
+  .btn:active{opacity:.7}
+  .btn-danger{background:var(--red);border-color:var(--red);color:#fff}
+  .btn-warn{background:var(--amber-bg);border-color:var(--amber);color:var(--amber)}
+  .btn-ok{background:var(--green-bg);border-color:var(--green);color:var(--green)}
+  .btn-ghost{background:var(--w);border-color:var(--line);color:var(--mid)}
+  .empty{text-align:center;padding:60px 20px;color:var(--muted)}
+  .empty-ic{font-size:44px;margin-bottom:14px}
+  .empty-t{font-size:15px;font-weight:700;color:var(--mid);margin-bottom:6px}
+  .loading{text-align:center;padding:50px;color:var(--muted);font-size:13px}
+  .gate{position:fixed;inset:0;background:var(--ink);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center}
+  .gate-logo{width:64px;height:64px;border-radius:16px;background:var(--or);display:flex;align-items:center;justify-content:center;font-size:32px;margin-bottom:20px}
+  .gate h1{color:#fff;font-size:20px;margin-bottom:8px}
+  .gate p{color:rgba(255,255,255,.6);font-size:13px;margin-bottom:24px}
+  .gate input{width:100%;max-width:280px;padding:14px;border-radius:var(--r);border:none;font-size:15px;margin-bottom:12px;text-align:center;font-family:inherit}
+  .gate button{width:100%;max-width:280px;padding:14px;border-radius:var(--r);border:none;background:var(--or);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+  .gate-hint{color:rgba(255,255,255,.4);font-size:11px;margin-top:16px;line-height:1.6}
+  .search-box{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r);font-size:14px;margin-bottom:14px;font-family:inherit}
+  .refresh-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .refresh-bar h2{font-size:16px;font-weight:800}
+  .refresh-btn{background:var(--or-bg);border:1px solid var(--or-bd);color:var(--or);font-size:12px;font-weight:700;padding:7px 14px;border-radius:var(--r);cursor:pointer;font-family:inherit}
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate">
+  <div class="gate-logo">🍊</div>
+  <h1>OrangeMarket 관리자</h1>
+  <p>관리자 비밀번호를 입력하세요</p>
+  <input type="password" id="adminPw" placeholder="비밀번호" onkeydown="if(event.key==='Enter')checkAdmin()">
+  <button onclick="checkAdmin()">로그인</button>
+  <div class="gate-hint">⚠️ 관리자 전용 페이지입니다.<br>비밀번호는 코드 안 ADMIN_PW에서 변경하세요.</div>
+</div>
+
+<div class="topnav">
+  <div class="topnav-logo">
+    <div class="logo-mark">🍊</div>
+    <div><div class="logo-text">OrangeMarket</div><div class="logo-sub">Admin</div></div>
+  </div>
+  <div class="admin-status" id="connStatus">연결 중...</div>
+</div>
+
+<div class="tabs">
+  <div class="tab on" onclick="goTab('dashboard',this)">📊 대시보드</div>
+  <div class="tab" onclick="goTab('reports',this)">🚨 신고 <span class="tab-badge" id="reportBadge" style="display:none">0</span></div>
+  <div class="tab" onclick="goTab('users',this)">👤 사용자</div>
+  <div class="tab" onclick="goTab('listings',this)">📦 매물</div>
+  <div class="tab" onclick="goTab('ads',this)">📢 광고</div>
+</div>
+
+<div class="content">
+  <div class="view on" id="v-dashboard">
+    <div class="refresh-bar"><h2>대시보드</h2><button class="refresh-btn" onclick="loadDashboard()">↻ 새로고침</button></div>
+    <div class="stats">
+      <div class="stat"><div class="stat-num" id="st-users">–</div><div class="stat-lbl">전체 회원</div></div>
+      <div class="stat"><div class="stat-num" id="st-listings">–</div><div class="stat-lbl">활성 매물</div></div>
+      <div class="stat alert"><div class="stat-num" id="st-reports">–</div><div class="stat-lbl">미처리 신고</div></div>
+      <div class="stat"><div class="stat-num" id="st-chats">–</div><div class="stat-lbl">전체 채팅</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="margin-bottom:12px">⚡ 빠른 작업</div>
+      <div class="actions">
+        <button class="btn btn-danger" onclick="goTab('reports',document.querySelectorAll('.tab')[1])">신고 처리하기</button>
+        <button class="btn btn-ghost" onclick="loadDashboard()">통계 갱신</button>
+      </div>
+    </div>
+    <div class="card" style="background:var(--amber-bg);border-color:#E8D9A8">
+      <div class="card-title" style="color:var(--amber)">📌 출시 전 체크리스트</div>
+      <div style="font-size:12px;color:var(--mid);line-height:1.9;margin-top:8px">
+        ☐ Firestore 보안 규칙 잠그기 (현재 열림)<br>
+        ☐ SMS 할당량 Blaze 요금제 전환<br>
+        ☐ 관리자 비밀번호 변경 (현재 기본값)<br>
+        ☐ 이미지 Storage 이전 (현재 base64)
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="v-reports">
+    <div class="refresh-bar"><h2>신고 관리</h2><button class="refresh-btn" onclick="loadReports()">↻ 새로고침</button></div>
+    <div id="reportList"><div class="loading">불러오는 중...</div></div>
+  </div>
+
+  <div class="view" id="v-users">
+    <div class="refresh-bar"><h2>사용자 관리</h2><button class="refresh-btn" onclick="loadUsers()">↻ 새로고침</button></div>
+    <input class="search-box" id="userSearch" placeholder="닉네임으로 검색..." oninput="filterUsers()">
+    <div id="userList"><div class="loading">불러오는 중...</div></div>
+  </div>
+
+  <div class="view" id="v-listings">
+    <div class="refresh-bar"><h2>매물 관리</h2><button class="refresh-btn" onclick="loadAdminListings()">↻ 새로고침</button></div>
+    <div id="listingList"><div class="loading">불러오는 중...</div></div>
+  </div>
+
+  <div class="view" id="v-ads">
+    <div class="refresh-bar"><h2>광고 신청 관리</h2><button class="refresh-btn" onclick="loadAds()">↻ 새로고침</button></div>
+    <div class="card" style="background:var(--blue-bg);border-color:#C5D9F0">
+      <div style="font-size:12px;color:var(--mid);line-height:1.7">💡 광고 신청이 들어오면 여기 표시됩니다. 입금(Zelle/Venmo) 확인 후 <b>승인</b>을 누르면 해당 업체 광고가 노출됩니다.</div>
+    </div>
+    <div id="adList"><div class="loading">불러오는 중...</div></div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, collection, query, where, limit, getDocs, doc, updateDoc, deleteDoc, serverTimestamp }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAj42PLwXqBc0dKw6o-mceJEYYZlHCzRoE",
+    authDomain: "orange-market-4d18b.firebaseapp.com",
+    projectId: "orange-market-4d18b",
+    storageBucket: "orange-market-4d18b.firebasestorage.app",
+    messagingSenderId: "712357052515",
+    appId: "1:712357052515:web:3ad98acbb91c889045f856"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // 관리자 비밀번호 - 출시 전 반드시 변경하세요!
+  const ADMIN_PW = "orange2025";
+
+  window.checkAdmin = function() {
+    if (document.getElementById('adminPw').value === ADMIN_PW) {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('connStatus').textContent = '🟢 연결됨';
+      loadDashboard();
+      loadReports();
+    } else {
+      alert('비밀번호가 틀렸어요.');
+    }
+  };
+
+  window.goTab = function(view, el) {
+    document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('on'); });
+    document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('on'); });
+    el.classList.add('on');
+    document.getElementById('v-' + view).classList.add('on');
+    if (view === 'reports') loadReports();
+    if (view === 'users') loadUsers();
+    if (view === 'listings') loadAdminListings();
+    if (view === 'ads') loadAds();
+  };
+
+  window.loadDashboard = async function() {
+    try {
+      const results = await Promise.all([
+        getDocs(collection(db,'users')).catch(function(){return {size:0};}),
+        getDocs(query(collection(db,'listings'), where('status','==','active'), limit(500))).catch(function(){return {size:0};}),
+        getDocs(query(collection(db,'reports'), where('status','==','pending'), limit(200))).catch(function(){return {size:0};}),
+        getDocs(collection(db,'chats')).catch(function(){return {size:0};})
+      ]);
+      document.getElementById('st-users').textContent = results[0].size || 0;
+      document.getElementById('st-listings').textContent = results[1].size || 0;
+      document.getElementById('st-reports').textContent = results[2].size || 0;
+      document.getElementById('st-chats').textContent = results[3].size || 0;
+      const badge = document.getElementById('reportBadge');
+      if (results[2].size > 0) { badge.style.display = 'inline-block'; badge.textContent = results[2].size; }
+      else { badge.style.display = 'none'; }
+    } catch(e) { console.error('대시보드:', e.message); }
+  };
+
+  window.loadReports = async function() {
+    const c = document.getElementById('reportList');
+    c.innerHTML = '<div class="loading">불러오는 중...</div>';
+    try {
+      const snap = await getDocs(query(collection(db,'reports'), where('status','==','pending'), limit(100))).catch(function(){return {docs:[]};});
+      const reports = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); });
+      if (reports.length === 0) {
+        c.innerHTML = '<div class="empty"><div class="empty-ic">✅</div><div class="empty-t">미처리 신고가 없어요</div><div style="font-size:12px">깨끗합니다!</div></div>';
+        return;
+      }
+      c.innerHTML = '';
+      reports.forEach(function(r){
+        const date = (r.createdAt&&r.createdAt.seconds) ? new Date(r.createdAt.seconds*1000).toLocaleString('ko-KR') : '';
+        const typeLabel = {user:'👤 사용자',listing:'📦 매물',chat:'💬 채팅',comment:'💬 댓글'}[r.targetType] || r.targetType || '신고';
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = '<div class="card-head"><div><div class="card-title">'+typeLabel+' 신고</div><div class="card-meta">'+date+'</div></div><span class="badge badge-red">미처리</span></div>'
+          + '<div class="reason-box">사유: '+(r.reason||'미기재')+'</div>'
+          + '<div class="card-meta" style="margin-bottom:12px">신고자: '+String(r.reporterId||'익명').slice(0,12)+'… · 대상: '+String(r.targetId||'').slice(0,16)+'…</div>';
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+        const sus = document.createElement('button'); sus.className='btn btn-danger'; sus.textContent='대상 정지';
+        sus.onclick = function(){ suspendTarget(r); };
+        const dis = document.createElement('button'); dis.className='btn btn-ghost'; dis.textContent='기각';
+        dis.onclick = function(){ resolveReport(r.id,'dismissed',card); };
+        const res = document.createElement('button'); res.className='btn btn-ok'; res.textContent='처리완료';
+        res.onclick = function(){ resolveReport(r.id,'resolved',card); };
+        actions.appendChild(sus); actions.appendChild(dis); actions.appendChild(res);
+        card.appendChild(actions);
+        c.appendChild(card);
+      });
+    } catch(e) {
+      c.innerHTML = '<div class="empty"><div class="empty-t">불러오기 실패</div><div style="font-size:12px">'+e.message+'</div></div>';
+    }
+  };
+
+  window.resolveReport = async function(id, status, card) {
+    try {
+      await updateDoc(doc(db,'reports',id), {status:status, resolvedAt:serverTimestamp()});
+      if (card) card.style.display = 'none';
+      loadDashboard();
+    } catch(e) { alert('처리 실패: '+e.message); }
+  };
+
+  window.suspendTarget = async function(r) {
+    if (!confirm('이 대상을 정지하시겠어요?\n\n사용자: 계정 정지\n매물: 게시 중단')) return;
+    try {
+      if (r.targetType === 'user' && r.targetId) {
+        await updateDoc(doc(db,'users',r.targetId), {suspended:true, suspendedAt:serverTimestamp()}).catch(function(){});
+      } else if (r.targetType === 'listing' && r.targetId) {
+        await updateDoc(doc(db,'listings',r.targetId), {status:'suspended'}).catch(function(){});
+      }
+      await updateDoc(doc(db,'reports',r.id), {status:'resolved', action:'suspended', resolvedAt:serverTimestamp()});
+      alert('정지 처리 완료 🛡️');
+      loadReports(); loadDashboard();
+    } catch(e) { alert('정지 실패: '+e.message); }
+  };
+
+  let _allUsers = [];
+  window.loadUsers = async function() {
+    const c = document.getElementById('userList');
+    c.innerHTML = '<div class="loading">불러오는 중...</div>';
+    try {
+      const snap = await getDocs(query(collection(db,'users'), limit(200))).catch(function(){return {docs:[]};});
+      _allUsers = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+      renderUsers(_allUsers);
+    } catch(e) { c.innerHTML = '<div class="empty"><div class="empty-t">불러오기 실패</div></div>'; }
+  };
+
+  window.filterUsers = function() {
+    const kw = (document.getElementById('userSearch').value||'').toLowerCase();
+    renderUsers(_allUsers.filter(function(u){ return (u.nickname||'').toLowerCase().includes(kw); }));
+  };
+
+  function renderUsers(users) {
+    const c = document.getElementById('userList');
+    if (users.length === 0) { c.innerHTML = '<div class="empty"><div class="empty-ic">👤</div><div class="empty-t">사용자가 없어요</div></div>'; return; }
+    c.innerHTML = '';
+    users.forEach(function(u){
+      const card = document.createElement('div');
+      card.className = 'card';
+      const sb = u.suspended ? '<span class="badge badge-red">정지됨</span>' : (u.verified ? '<span class="badge badge-green">인증</span>' : '<span class="badge badge-amber">미인증</span>');
+      card.innerHTML = '<div class="card-head"><div><div class="card-title">'+(u.nickname||'이름없음')+'</div><div class="card-meta">'+(u.neighborhood||'OC')+' · 거래 '+(u.totalTrades||0)+'회 · 신고 '+(u.reportCount||0)+'회</div></div>'+sb+'</div>';
+      const actions = document.createElement('div'); actions.className='actions';
+      if (u.suspended) {
+        const un = document.createElement('button'); un.className='btn btn-ok'; un.textContent='정지 해제';
+        un.onclick = function(){ toggleSuspend(u.id, false); };
+        actions.appendChild(un);
+      } else {
+        const su = document.createElement('button'); su.className='btn btn-warn'; su.textContent='계정 정지';
+        su.onclick = function(){ toggleSuspend(u.id, true); };
+        actions.appendChild(su);
+      }
+      card.appendChild(actions);
+      c.appendChild(card);
+    });
+  }
+
+  window.toggleSuspend = async function(uid, suspend) {
+    if (suspend && !confirm('이 계정을 정지하시겠어요?')) return;
+    try {
+      await updateDoc(doc(db,'users',uid), {suspended:suspend, suspendedAt: suspend?serverTimestamp():null});
+      alert(suspend ? '계정을 정지했어요.' : '정지를 해제했어요.');
+      loadUsers();
+    } catch(e) { alert('실패: '+e.message); }
+  };
+
+  window.loadAdminListings = async function() {
+    const c = document.getElementById('listingList');
+    c.innerHTML = '<div class="loading">불러오는 중...</div>';
+    try {
+      const snap = await getDocs(query(collection(db,'listings'), limit(100))).catch(function(){return {docs:[]};});
+      const listings = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); });
+      if (listings.length === 0) { c.innerHTML = '<div class="empty"><div class="empty-ic">📦</div><div class="empty-t">매물이 없어요</div></div>'; return; }
+      c.innerHTML = '';
+      listings.forEach(function(l){
+        const card = document.createElement('div'); card.className='card';
+        const cls = l.status==='active'?'badge-green':l.status==='suspended'?'badge-red':'badge-amber';
+        const st = l.status==='active'?'활성':l.status==='suspended'?'정지':l.status;
+        card.innerHTML = '<div class="card-head"><div><div class="card-title">'+(l.title||'제목없음')+'</div><div class="card-meta">'+(l.sellerNickname||'')+' · '+(l.isFree?'무료':'$'+(l.price||0))+' · 조회 '+(l.viewCount||0)+'</div></div><span class="badge '+cls+'">'+st+'</span></div>';
+        const actions = document.createElement('div'); actions.className='actions';
+        if (l.status === 'active') {
+          const su = document.createElement('button'); su.className='btn btn-warn'; su.textContent='게시 중단';
+          su.onclick = function(){ setListingStatus(l.id,'suspended'); };
+          actions.appendChild(su);
+        } else {
+          const re = document.createElement('button'); re.className='btn btn-ok'; re.textContent='게시 복구';
+          re.onclick = function(){ setListingStatus(l.id,'active'); };
+          actions.appendChild(re);
+        }
+        const del = document.createElement('button'); del.className='btn btn-danger'; del.textContent='삭제';
+        del.onclick = function(){ delListing(l.id); };
+        actions.appendChild(del);
+        card.appendChild(actions);
+        c.appendChild(card);
+      });
+    } catch(e) { c.innerHTML = '<div class="empty"><div class="empty-t">불러오기 실패</div></div>'; }
+  };
+
+  window.setListingStatus = async function(id, status) {
+    try { await updateDoc(doc(db,'listings',id), {status:status}); loadAdminListings(); }
+    catch(e) { alert('실패: '+e.message); }
+  };
+
+  window.delListing = async function(id) {
+    if (!confirm('이 매물을 영구 삭제하시겠어요?')) return;
+    try { await deleteDoc(doc(db,'listings',id)); loadAdminListings(); }
+    catch(e) { alert('삭제 실패: '+e.message); }
+  };
+
+  window.loadAds = async function() {
+    const c = document.getElementById('adList');
+    c.innerHTML = '<div class="loading">불러오는 중...</div>';
+    try {
+      const snap = await getDocs(query(collection(db,'adRequests'), limit(100))).catch(function(){return {docs:[]};});
+      const ads = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); });
+      if (ads.length === 0) { c.innerHTML = '<div class="empty"><div class="empty-ic">📢</div><div class="empty-t">광고 신청이 없어요</div><div style="font-size:12px">업체가 광고를 신청하면 여기 표시됩니다</div></div>'; return; }
+      c.innerHTML = '';
+      ads.forEach(function(a){
+        const card = document.createElement('div'); card.className='card';
+        const cls = a.status==='approved'?'badge-green':a.status==='rejected'?'badge-red':'badge-amber';
+        const st = a.status==='approved'?'승인됨':a.status==='rejected'?'거절':'대기중';
+        card.innerHTML = '<div class="card-head"><div><div class="card-title">'+(a.businessName||'업체')+'</div><div class="card-meta">'+(a.tier||'')+' · '+(a.category||'')+' · '+(a.amount||'')+'</div></div><span class="badge '+cls+'">'+st+'</span></div>';
+        if (a.status === 'pending') {
+          const actions = document.createElement('div'); actions.className='actions';
+          const ok = document.createElement('button'); ok.className='btn btn-ok'; ok.textContent='입금확인·승인';
+          ok.onclick = function(){ setAdStatus(a.id,'approved'); };
+          const no = document.createElement('button'); no.className='btn btn-ghost'; no.textContent='거절';
+          no.onclick = function(){ setAdStatus(a.id,'rejected'); };
+          actions.appendChild(ok); actions.appendChild(no);
+          card.appendChild(actions);
+        }
+        c.appendChild(card);
+      });
+    } catch(e) { c.innerHTML = '<div class="empty"><div class="empty-t">불러오기 실패</div></div>'; }
+  };
+
+  window.setAdStatus = async function(id, status) {
+    try {
+      await updateDoc(doc(db,'adRequests',id), {status:status, reviewedAt:serverTimestamp()});
+      alert(status==='approved' ? '광고 승인 완료! 🍊' : '거절 처리됨');
+      loadAds();
+    } catch(e) { alert('실패: '+e.message); }
+  };
+</script>
+</body>
+</html>

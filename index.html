@@ -153,13 +153,15 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 .cst{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)}
 .cst svg{width:11px;height:11px;fill:none;stroke:var(--muted);stroke-width:1.6}
 /* boost badge */
-.boost-tag{position:absolute;top:9px;left:9px;z-index:2;font-size:10px;font-weight:700;
-  color:var(--w);background:var(--or);padding:2px 8px;border-radius:20px;
+.boost-tag{position:absolute;top:-1px;left:-1px;background:var(--or);color:#fff;
+  font-size:9px;font-weight:700;padding:3px 9px;
+  border-radius:var(--rl) 0 var(--r) 0;letter-spacing:.05em;z-index:2;
   display:flex;align-items:center;gap:3px}
+.boost-tag svg{width:10px;height:10px;fill:none;stroke:#fff;stroke-width:2.5}
 .boost-tag svg{width:9px;height:9px;fill:none;stroke:var(--w);stroke-width:2.5}
 
 /* INLINE AD */
-.iad{background:linear-gradient(135deg,#FDF0E8,#F5E0CC);margin:8px 14px 10px;border-radius:var(--rl);
+.iad{background:linear-gradient(135deg,#FDF0E8,#F5E0CC);margin:0 14px 8px;border-radius:var(--rl);
   padding:13px 15px;display:flex;align-items:center;gap:11px;
   border:1px solid var(--line);cursor:pointer;transition:transform .12s}
 .iad:hover{transform:translateY(-1px)}
@@ -270,8 +272,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   margin-right:-6px;display:flex;align-items:center;justify-content:center;
   font-size:10px;font-weight:600;color:var(--brown)}
 .mc-cnt{font-size:11px;color:var(--muted);margin-left:14px}
-.mc-join{margin-left:auto;background:var(--or);color:#fff;border:none;
-  font-size:12px;font-weight:600;padding:6px 14px;border-radius:8px;cursor:pointer;font-family:inherit}
+.mc-join{margin-left:auto;background:var(--w);color:var(--or);border:1.5px solid var(--or);
+  font-size:12px;font-weight:700;padding:6px 16px;border-radius:20px;cursor:pointer;font-family:inherit;transition:.15s}
 
 /* DETAIL */
 .dhead{background:var(--w);padding:11px 15px;display:flex;align-items:center;
@@ -581,7 +583,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 .bni-dot{position:absolute;top:1px;right:calc(50% - 14px);
   width:6px;height:6px;background:var(--or);border-radius:50%;border:1.5px solid var(--w)}
 /* FAB */
-.fab{position:absolute;bottom:78px;right:16px;width:48px;height:48px;
+.fab{position:absolute;bottom:94px;right:16px;width:48px;height:48px;
   background:var(--or);border:none;border-radius:13px;
   display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;
   box-shadow:0 6px 20px rgba(232,87,26,.32);transition:transform .13s}
@@ -1415,7 +1417,7 @@ window.searchListings = async function() {
     setTxt('userProfileNickname', nm);
     setTxt('userProfileAvatar', nm[0]);
     setTxt('userProfileArea', '얼바인 노스우드');
-    setTxt('userProfileScore', '바이브 점수 0');
+    setTxt('userProfileScore', '🍊 아직 당도가 채워지지 않았어요');
     // 데모 판매자: 샘플 프로필
     if (String(userId).indexOf('demo') === 0) {
       setTxt('userProfileArea', '얼바인 노스우드');
@@ -1437,7 +1439,7 @@ window.searchListings = async function() {
         setTxt('userProfileNickname', user.nickname || '이웃');
         setTxt('userProfileAvatar', (user.nickname||'이')[0]);
         setTxt('userProfileArea', user.neighborhood || 'OC');
-        setTxt('userProfileScore', '바이브 점수 '+(user.vibeScore||0));
+        setTxt('userProfileScore', (user.vibeScore && user.vibeScore>0) ? ('🍊 당도 '+user.vibeScore+'%') : '🍊 아직 당도가 채워지지 않았어요');
       }
 
       // 유저 매물
@@ -1449,7 +1451,7 @@ window.searchListings = async function() {
       const listContainer = document.getElementById('userListings');
       if (listContainer) {
         if (listings.length===0) {
-          listContainer.innerHTML='<div style="text-align:center;padding:30px;color:var(--muted)">판매 중인 매물이 없어요</div>';
+          listContainer.innerHTML='<div style="text-align:center;padding:36px 20px;color:var(--muted)"><div style="font-size:13px">아직 판매 중인 물품이 없어요</div></div>';
         } else {
           listContainer.innerHTML='';
           listings.forEach(l=>{
@@ -2050,8 +2052,14 @@ window.searchListings = async function() {
     try {
       var snap = await getDocs(query(collection(db,'community'), limit(50))).catch(function(){return {docs:[]};});
       var blocked = (window.getBlockedUsers && window.getBlockedUsers()) || [];
+      var commFilter = window._commFilter || null;
       var posts = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
         .filter(function(p){ return blocked.indexOf(p.userId) < 0; })
+        .filter(function(p){
+          var cat = (p.category||'').replace(/\s.*/,'');
+          if(commFilter) return cat === commFilter;  // 특정 카테고리만
+          return cat !== '모임';  // 전체에선 모임 제외 (모임은 하단 영역)
+        })
         .sort(function(a,b){ return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0); });
       if (posts.length === 0) {
         container.innerHTML = '';
@@ -2823,20 +2831,32 @@ window.searchListings = async function() {
     <div class="iad" onclick="openSponsor('academy')"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z"/></svg></div><div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">스타 아카데미 &#8212; SAT/AP 전문</div><div class="iad-s">체험 수업 무료 &#183; 얼바인</div></div><div class="iad-arr">&#8250;</div></div>
 
     <!-- 모임 within 커뮤니티 -->
-    <div class="sech" style="padding-top:8px"><div class="secht">동네 모임 Gatherings</div><div class="secha" onclick="window._selectedSubcat='모임';showSc('comm-write')" style="cursor:pointer">+ 만들기</div></div>
+    <div class="sech" style="padding-top:8px" id="meetSection"><div class="secht">동네 모임 Gatherings</div><div class="secha" onclick="window._selectedSubcat='모임';showSc('comm-write')" style="cursor:pointer;background:var(--or);color:#fff;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700">+ 만들기</div></div>
     <div class="meetcard" onclick="openMeetDetail(this)" style="cursor:pointer">
       <div class="mc-top">
         <div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div>
         <div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park 테니스장</div></div>
       </div>
-      <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명 참가</span><button class="mc-join" onclick="event.stopPropagation();joinMeet(this)">참가</button></div>
+      <div class="mc-foot" style="flex-direction:column;align-items:stretch;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span class="mc-cnt" style="margin-left:0">👥 <b id="mcCount0">12</b>/<span>16</span>명</span>
+          <button class="mc-join" data-meet="0" data-cap="16" data-cur="12" onclick="event.stopPropagation();joinMeet(this)">참가</button>
+        </div>
+        <div style="height:5px;background:var(--line);border-radius:3px;overflow:hidden"><div id="mcBar0" style="height:100%;width:75%;background:var(--or);border-radius:3px"></div></div>
+      </div>
     </div>
     <div class="meetcard" onclick="openMeetDetail(this)" style="cursor:pointer">
       <div class="mc-top">
         <div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">12</div></div>
         <div><div class="mc-t">한인 독서모임 — 4월 책</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 스타벅스 &#183; Culver Dr.</div></div>
       </div>
-      <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#FAD4C8">A</div><div class="mc-av" style="background:#C8D4FA">B</div></div><span class="mc-cnt">+6명 참가</span><button class="mc-join" onclick="event.stopPropagation();joinMeet(this)">참가</button></div>
+      <div class="mc-foot" style="flex-direction:column;align-items:stretch;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span class="mc-cnt" style="margin-left:0">👥 <b id="mcCount1">8</b>/<span>8</span>명</span>
+          <button class="mc-join" data-meet="1" data-cap="8" data-cur="8" onclick="event.stopPropagation();joinMeet(this)" style="background:var(--line);color:var(--muted);border-color:var(--line);cursor:default">마감!</button>
+        </div>
+        <div style="height:5px;background:var(--line);border-radius:3px;overflow:hidden"><div id="mcBar1" style="height:100%;width:100%;background:var(--muted);border-radius:3px"></div></div>
+      </div>
     </div>
     
     <div class="pb80"></div>
@@ -2983,10 +3003,20 @@ window.searchListings = async function() {
   <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--w);padding:18px">
     <div class="wsec">카테고리</div>
     <div class="catgrid">
-      <button class="catc on" onclick="selCat(this)">수다</button>
-      <button class="catc" onclick="selCat(this)">질문</button>
-      <button class="catc" onclick="selCat(this)">정보</button>
-      <button class="catc" onclick="selCat(this)">모임</button>
+      <button class="catc on" onclick="selCommCat(this,'수다')">수다</button>
+      <button class="catc" onclick="selCommCat(this,'질문')">질문</button>
+      <button class="catc" onclick="selCommCat(this,'정보')">정보</button>
+      <button class="catc" onclick="selCommCat(this,'모임')">모임</button>
+    </div>
+    <!-- 모임 정원 (모임 선택시만) -->
+    <div id="meetCapBox" style="display:none;margin-top:14px">
+      <div class="wsec">모집 인원</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input id="meetCapInput" class="winp" type="number" min="2" max="100" value="10" style="width:90px">
+        <span style="font-size:13px;color:var(--mid)">명까지 모집</span>
+      </div>
+      <div class="wsec" style="margin-top:14px">모임 날짜</div>
+      <input id="meetDateInput" class="winp" type="text" placeholder="예: 4월 20일 토요일 오후 3시">
     </div>
     <div class="wsep"></div>
     <div class="wsec">제목</div>
@@ -4305,6 +4335,18 @@ function showSc(n){
   var fab=document.getElementById('fab');
   if(fab)fab.style.display=(n==='home')?'flex':'none';
   if(n==='biz-write' && window.selectBizPlan) selectBizPlan('free');
+  if(n==='comm-write' && window._selectedSubcat==='모임'){
+    setTimeout(function(){
+      document.querySelectorAll('#sc-comm-write .catc').forEach(function(c){
+        if(c.textContent.trim()==='모임'){
+          document.querySelectorAll('#sc-comm-write .catc').forEach(function(x){x.classList.remove('on');});
+          c.classList.add('on');
+          window._commWriteCat='모임';
+          var cb=document.getElementById('meetCapBox'); if(cb) cb.style.display='block';
+        }
+      });
+    },50);
+  }
   if((n==='write') && window._selectedSubcat){
     setTimeout(function(){
       document.querySelectorAll('#sc-write .catc').forEach(function(c){
@@ -4363,6 +4405,23 @@ function selSub(el){
       else { titleEl.innerHTML = label + (eng ? ' <span style="font-size:12px;font-weight:600;color:var(--muted)">'+eng+'</span>' : ''); }
     }
     if(panel.id==='p-market' && window.loadListings){ window._marketFilter = (label==='전체')?null:label; window.loadListings(); }
+    // 커뮤니티: 모임 선택 시 동네모임 영역으로, 그 외엔 일반글
+    if(panel.id==='p-comm'){
+      var meetSec = document.getElementById('meetSection');
+      var commList = document.getElementById('commListContainer');
+      if(label==='모임'){
+        // 일반글 숨기고 모임 영역으로 스크롤
+        if(commList) commList.style.display='none';
+        var firstSech = panel.querySelector('.sech');
+        if(firstSech) firstSech.style.display='none';
+        if(meetSec){ meetSec.scrollIntoView({behavior:'smooth',block:'start'}); }
+      } else {
+        if(commList) commList.style.display='';
+        var fs2 = panel.querySelector('.sech');
+        if(fs2) fs2.style.display='';
+        if(window._commFilter !== undefined){ window._commFilter = (label==='전체')?null:label; if(window.loadCommunity) window.loadCommunity(); }
+      }
+    }
     // 선택한 소카테고리 저장 (글쓰기 시 미리 채움)
     window._selectedSubcat = (label==='전체') ? null : label;
   }
@@ -4415,31 +4474,134 @@ function toggleUrgent(type){
 }
 
 
-// 동네 모임 참가/상세
+// 동네 모임 참가/마감/취소
 function joinMeet(btn){
+  var cap = parseInt(btn.dataset.cap) || 99;
+  var cur = parseInt(btn.dataset.cur) || 0;
+  var meetId = btn.dataset.meet;
   var joined = btn.dataset.joined === '1';
+  // 마감 상태면 무시 (단, 이미 참가한 사람은 취소 가능)
+  if(!joined && cur >= cap){
+    alert('이 모임은 정원이 다 찼어요. 😢');
+    return;
+  }
+  var countEl = document.getElementById('mcCount'+meetId);
+  var barEl = document.getElementById('mcBar'+meetId);
   if(joined){
+    // 취소
+    cur = Math.max(0, cur-1);
+    btn.dataset.cur = cur;
     btn.dataset.joined = '0';
     btn.textContent = '참가';
-    btn.style.background = '';
-    btn.style.color = '';
+    btn.style.background = 'var(--w)';
+    btn.style.color = 'var(--or)';
+    btn.style.borderColor = 'var(--or)';
+    btn.style.cursor = 'pointer';
     alert('모임 참가를 취소했어요.');
   } else {
+    // 참가
+    cur = cur+1;
+    btn.dataset.cur = cur;
     btn.dataset.joined = '1';
-    btn.textContent = '참가 완료 ✓';
-    btn.style.background = 'var(--green-bg,#EFF7F2)';
-    btn.style.color = 'var(--green,#3A7D52)';
-    alert('모임에 참가 신청됐어요! 🍊\n주최자가 확인 후 채팅으로 연락드려요.');
+    if(cur >= cap){
+      btn.textContent = '마감!';
+      btn.style.background = 'var(--line)';
+      btn.style.color = 'var(--muted)';
+      btn.style.borderColor = 'var(--line)';
+    } else {
+      btn.textContent = '참가 완료 ✓';
+      btn.style.background = 'var(--green-bg,#EFF7F2)';
+      btn.style.color = 'var(--green,#3A7D52)';
+      btn.style.borderColor = 'var(--green,#3A7D52)';
+    }
+    alert('모임에 참가했어요! 🍊\n댓글로 인사를 남겨보세요.');
   }
+  if(countEl) countEl.textContent = cur;
+  if(barEl) barEl.style.width = Math.min(100, Math.round(cur/cap*100))+'%';
+  if(cur >= cap && barEl) barEl.style.background = 'var(--muted)';
+  else if(barEl) barEl.style.background = 'var(--or)';
 }
+
 function openMeetDetail(card){
   var title = card.querySelector('.mc-t');
   var loc = card.querySelector('.mc-loc');
-  var cnt = card.querySelector('.mc-cnt');
+  var btn = card.querySelector('.mc-join');
+  var cur = btn ? (btn.dataset.cur||'0') : '0';
+  var cap = btn ? (btn.dataset.cap||'') : '';
+  var meetId = btn ? btn.dataset.meet : '0';
   var t = title ? title.textContent : '동네 모임';
   var l = loc ? loc.textContent.trim() : '';
-  var c = cnt ? cnt.textContent : '';
-  alert('🍊 ' + t + '\n\n📍 ' + l + '\n👥 ' + c + '\n\n참가하려면 카드의 "참가" 버튼을 눌러주세요!');
+  var full = parseInt(cur) >= parseInt(cap);
+  showMeetSheet(t, l, cur, cap, meetId, full, btn);
+}
+
+// 모임 상세 + 댓글 시트
+function showMeetSheet(title, loc, cur, cap, meetId, full, joinBtn){
+  var old = document.getElementById('om_sheet'); if(old) old.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'om_sheet';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:500;display:flex;flex-direction:column;justify-content:flex-end';
+  var bg = document.createElement('div');
+  bg.style.cssText = 'flex:1;background:rgba(0,0,0,.45)';
+  bg.onclick = function(){ overlay.remove(); };
+  var panel = document.createElement('div');
+  panel.style.cssText = 'background:#fff;border-radius:22px 22px 0 0;max-height:85vh;display:flex;flex-direction:column';
+  var statusBadge = full
+    ? '<span style="font-size:11px;font-weight:700;color:var(--muted);background:var(--line);padding:3px 10px;border-radius:20px">마감</span>'
+    : '<span style="font-size:11px;font-weight:700;color:var(--green,#3A7D52);background:var(--green-bg,#EFF7F2);padding:3px 10px;border-radius:20px">모집중</span>';
+  panel.innerHTML =
+    '<div style="padding:18px 18px 14px;border-bottom:1px solid var(--line)">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+statusBadge+'<span style="font-size:12px;color:var(--muted)">👥 '+cur+'/'+cap+'명</span></div>'
+    + '<div style="font-size:18px;font-weight:800;color:#3E2510;margin-bottom:6px">'+title+'</div>'
+    + '<div style="font-size:13px;color:var(--mid)">📍 '+loc+'</div></div>'
+    + '<div style="padding:12px 18px;font-size:13px;font-weight:700;color:#3E2510">댓글 · 누가 모이나요?</div>'
+    + '<div id="meetComments" style="flex:1;overflow-y:auto;padding:0 0 8px"></div>'
+    + '<div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line)">'
+    + '<input id="meetCmtInput" placeholder="인사나 질문을 남겨보세요..." style="flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:20px;font-size:14px;font-family:inherit">'
+    + '<button onclick="addMeetComment(\''+meetId+'\')" style="padding:10px 18px;background:var(--or);border:none;border-radius:20px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">등록</button></div>';
+  overlay.appendChild(bg);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  loadMeetComments(meetId);
+}
+
+window._meetComments = window._meetComments || {};
+function loadMeetComments(meetId){
+  var box = document.getElementById('meetComments');
+  if(!box) return;
+  var list = window._meetComments[meetId] || [];
+  if(list.length === 0){
+    box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">아직 댓글이 없어요.<br>첫 인사를 남겨보세요! 🍊</div>';
+    return;
+  }
+  box.innerHTML = '';
+  list.forEach(function(c){
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:10px;padding:10px 18px';
+    row.innerHTML = '<div style="width:30px;height:30px;border-radius:50%;background:var(--or-bg);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--or);flex-shrink:0">'+(c.nick||'?').charAt(0)+'</div><div style="flex:1"><div style="font-size:12px;font-weight:700;color:#3E2510">'+(c.nick||'이웃')+'</div><div style="font-size:13px;color:var(--mid);margin-top:1px">'+c.text+'</div></div>';
+    box.appendChild(row);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+function addMeetComment(meetId){
+  var input = document.getElementById('meetCmtInput');
+  if(!input || !input.value.trim()) return;
+  var nick = (window._userProfile && window._userProfile.nickname) || '나';
+  if(!window._meetComments[meetId]) window._meetComments[meetId] = [];
+  window._meetComments[meetId].push({ nick: nick, text: input.value.trim() });
+  input.value = '';
+  loadMeetComments(meetId);
+}
+
+
+// 커뮤니티 카테고리 선택 (모임이면 정원칸 표시)
+function selCommCat(el, cat){
+  var grid = el.parentElement;
+  grid.querySelectorAll('.catc').forEach(function(c){c.classList.remove('on');});
+  el.classList.add('on');
+  window._commWriteCat = cat;
+  var capBox = document.getElementById('meetCapBox');
+  if(capBox) capBox.style.display = (cat==='모임') ? 'block' : 'none';
 }
 
 function selCat(el){
@@ -4820,6 +4982,18 @@ function showSc(n){
   var fab=document.getElementById('fab');
   if(fab)fab.style.display=(n==='home')?'flex':'none';
   if(n==='biz-write' && window.selectBizPlan) selectBizPlan('free');
+  if(n==='comm-write' && window._selectedSubcat==='모임'){
+    setTimeout(function(){
+      document.querySelectorAll('#sc-comm-write .catc').forEach(function(c){
+        if(c.textContent.trim()==='모임'){
+          document.querySelectorAll('#sc-comm-write .catc').forEach(function(x){x.classList.remove('on');});
+          c.classList.add('on');
+          window._commWriteCat='모임';
+          var cb=document.getElementById('meetCapBox'); if(cb) cb.style.display='block';
+        }
+      });
+    },50);
+  }
   if((n==='write') && window._selectedSubcat){
     setTimeout(function(){
       document.querySelectorAll('#sc-write .catc').forEach(function(c){
@@ -4878,6 +5052,23 @@ function selSub(el){
       else { titleEl.innerHTML = label + (eng ? ' <span style="font-size:12px;font-weight:600;color:var(--muted)">'+eng+'</span>' : ''); }
     }
     if(panel.id==='p-market' && window.loadListings){ window._marketFilter = (label==='전체')?null:label; window.loadListings(); }
+    // 커뮤니티: 모임 선택 시 동네모임 영역으로, 그 외엔 일반글
+    if(panel.id==='p-comm'){
+      var meetSec = document.getElementById('meetSection');
+      var commList = document.getElementById('commListContainer');
+      if(label==='모임'){
+        // 일반글 숨기고 모임 영역으로 스크롤
+        if(commList) commList.style.display='none';
+        var firstSech = panel.querySelector('.sech');
+        if(firstSech) firstSech.style.display='none';
+        if(meetSec){ meetSec.scrollIntoView({behavior:'smooth',block:'start'}); }
+      } else {
+        if(commList) commList.style.display='';
+        var fs2 = panel.querySelector('.sech');
+        if(fs2) fs2.style.display='';
+        if(window._commFilter !== undefined){ window._commFilter = (label==='전체')?null:label; if(window.loadCommunity) window.loadCommunity(); }
+      }
+    }
     // 선택한 소카테고리 저장 (글쓰기 시 미리 채움)
     window._selectedSubcat = (label==='전체') ? null : label;
   }
@@ -4930,31 +5121,134 @@ function toggleUrgent(type){
 }
 
 
-// 동네 모임 참가/상세
+// 동네 모임 참가/마감/취소
 function joinMeet(btn){
+  var cap = parseInt(btn.dataset.cap) || 99;
+  var cur = parseInt(btn.dataset.cur) || 0;
+  var meetId = btn.dataset.meet;
   var joined = btn.dataset.joined === '1';
+  // 마감 상태면 무시 (단, 이미 참가한 사람은 취소 가능)
+  if(!joined && cur >= cap){
+    alert('이 모임은 정원이 다 찼어요. 😢');
+    return;
+  }
+  var countEl = document.getElementById('mcCount'+meetId);
+  var barEl = document.getElementById('mcBar'+meetId);
   if(joined){
+    // 취소
+    cur = Math.max(0, cur-1);
+    btn.dataset.cur = cur;
     btn.dataset.joined = '0';
     btn.textContent = '참가';
-    btn.style.background = '';
-    btn.style.color = '';
+    btn.style.background = 'var(--w)';
+    btn.style.color = 'var(--or)';
+    btn.style.borderColor = 'var(--or)';
+    btn.style.cursor = 'pointer';
     alert('모임 참가를 취소했어요.');
   } else {
+    // 참가
+    cur = cur+1;
+    btn.dataset.cur = cur;
     btn.dataset.joined = '1';
-    btn.textContent = '참가 완료 ✓';
-    btn.style.background = 'var(--green-bg,#EFF7F2)';
-    btn.style.color = 'var(--green,#3A7D52)';
-    alert('모임에 참가 신청됐어요! 🍊\n주최자가 확인 후 채팅으로 연락드려요.');
+    if(cur >= cap){
+      btn.textContent = '마감!';
+      btn.style.background = 'var(--line)';
+      btn.style.color = 'var(--muted)';
+      btn.style.borderColor = 'var(--line)';
+    } else {
+      btn.textContent = '참가 완료 ✓';
+      btn.style.background = 'var(--green-bg,#EFF7F2)';
+      btn.style.color = 'var(--green,#3A7D52)';
+      btn.style.borderColor = 'var(--green,#3A7D52)';
+    }
+    alert('모임에 참가했어요! 🍊\n댓글로 인사를 남겨보세요.');
   }
+  if(countEl) countEl.textContent = cur;
+  if(barEl) barEl.style.width = Math.min(100, Math.round(cur/cap*100))+'%';
+  if(cur >= cap && barEl) barEl.style.background = 'var(--muted)';
+  else if(barEl) barEl.style.background = 'var(--or)';
 }
+
 function openMeetDetail(card){
   var title = card.querySelector('.mc-t');
   var loc = card.querySelector('.mc-loc');
-  var cnt = card.querySelector('.mc-cnt');
+  var btn = card.querySelector('.mc-join');
+  var cur = btn ? (btn.dataset.cur||'0') : '0';
+  var cap = btn ? (btn.dataset.cap||'') : '';
+  var meetId = btn ? btn.dataset.meet : '0';
   var t = title ? title.textContent : '동네 모임';
   var l = loc ? loc.textContent.trim() : '';
-  var c = cnt ? cnt.textContent : '';
-  alert('🍊 ' + t + '\n\n📍 ' + l + '\n👥 ' + c + '\n\n참가하려면 카드의 "참가" 버튼을 눌러주세요!');
+  var full = parseInt(cur) >= parseInt(cap);
+  showMeetSheet(t, l, cur, cap, meetId, full, btn);
+}
+
+// 모임 상세 + 댓글 시트
+function showMeetSheet(title, loc, cur, cap, meetId, full, joinBtn){
+  var old = document.getElementById('om_sheet'); if(old) old.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'om_sheet';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:500;display:flex;flex-direction:column;justify-content:flex-end';
+  var bg = document.createElement('div');
+  bg.style.cssText = 'flex:1;background:rgba(0,0,0,.45)';
+  bg.onclick = function(){ overlay.remove(); };
+  var panel = document.createElement('div');
+  panel.style.cssText = 'background:#fff;border-radius:22px 22px 0 0;max-height:85vh;display:flex;flex-direction:column';
+  var statusBadge = full
+    ? '<span style="font-size:11px;font-weight:700;color:var(--muted);background:var(--line);padding:3px 10px;border-radius:20px">마감</span>'
+    : '<span style="font-size:11px;font-weight:700;color:var(--green,#3A7D52);background:var(--green-bg,#EFF7F2);padding:3px 10px;border-radius:20px">모집중</span>';
+  panel.innerHTML =
+    '<div style="padding:18px 18px 14px;border-bottom:1px solid var(--line)">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+statusBadge+'<span style="font-size:12px;color:var(--muted)">👥 '+cur+'/'+cap+'명</span></div>'
+    + '<div style="font-size:18px;font-weight:800;color:#3E2510;margin-bottom:6px">'+title+'</div>'
+    + '<div style="font-size:13px;color:var(--mid)">📍 '+loc+'</div></div>'
+    + '<div style="padding:12px 18px;font-size:13px;font-weight:700;color:#3E2510">댓글 · 누가 모이나요?</div>'
+    + '<div id="meetComments" style="flex:1;overflow-y:auto;padding:0 0 8px"></div>'
+    + '<div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line)">'
+    + '<input id="meetCmtInput" placeholder="인사나 질문을 남겨보세요..." style="flex:1;padding:10px 14px;border:1px solid var(--line);border-radius:20px;font-size:14px;font-family:inherit">'
+    + '<button onclick="addMeetComment(\''+meetId+'\')" style="padding:10px 18px;background:var(--or);border:none;border-radius:20px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">등록</button></div>';
+  overlay.appendChild(bg);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  loadMeetComments(meetId);
+}
+
+window._meetComments = window._meetComments || {};
+function loadMeetComments(meetId){
+  var box = document.getElementById('meetComments');
+  if(!box) return;
+  var list = window._meetComments[meetId] || [];
+  if(list.length === 0){
+    box.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">아직 댓글이 없어요.<br>첫 인사를 남겨보세요! 🍊</div>';
+    return;
+  }
+  box.innerHTML = '';
+  list.forEach(function(c){
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:10px;padding:10px 18px';
+    row.innerHTML = '<div style="width:30px;height:30px;border-radius:50%;background:var(--or-bg);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--or);flex-shrink:0">'+(c.nick||'?').charAt(0)+'</div><div style="flex:1"><div style="font-size:12px;font-weight:700;color:#3E2510">'+(c.nick||'이웃')+'</div><div style="font-size:13px;color:var(--mid);margin-top:1px">'+c.text+'</div></div>';
+    box.appendChild(row);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+function addMeetComment(meetId){
+  var input = document.getElementById('meetCmtInput');
+  if(!input || !input.value.trim()) return;
+  var nick = (window._userProfile && window._userProfile.nickname) || '나';
+  if(!window._meetComments[meetId]) window._meetComments[meetId] = [];
+  window._meetComments[meetId].push({ nick: nick, text: input.value.trim() });
+  input.value = '';
+  loadMeetComments(meetId);
+}
+
+
+// 커뮤니티 카테고리 선택 (모임이면 정원칸 표시)
+function selCommCat(el, cat){
+  var grid = el.parentElement;
+  grid.querySelectorAll('.catc').forEach(function(c){c.classList.remove('on');});
+  el.classList.add('on');
+  window._commWriteCat = cat;
+  var capBox = document.getElementById('meetCapBox');
+  if(capBox) capBox.style.display = (cat==='모임') ? 'block' : 'none';
 }
 
 function selCat(el){
