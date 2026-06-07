@@ -475,7 +475,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   width:170px;height:170px;border-radius:50%;background:rgba(232,87,26,.09)}
 .pav{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--sand),var(--tan));
   display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:var(--brown);
-  margin-bottom:12px;border:2px solid rgba(255,255,255,.1)}
+  margin-bottom:12px;border:2px solid rgba(255,255,255,.1);overflow:hidden}
 .pnm{font-size:20px;font-weight:700;color:var(--w);letter-spacing:-.02em;margin-bottom:3px}
 .parea{font-size:12px;color:var(--tan);display:flex;align-items:center;gap:4px}
 .parea svg{width:11px;height:11px;fill:none;stroke:var(--tan);stroke-width:2.2}
@@ -2161,6 +2161,15 @@ window.searchListings = async function() {
     closeBtn.textContent = '\u2715';
     closeBtn.style.cssText = 'background:none;border:none;font-size:18px;color:var(--muted);cursor:pointer';
     closeBtn.addEventListener('click', function(){ overlay.remove(); });
+    // 본인 글이면 삭제 버튼
+    var cu = window._currentUser || (window._auth && window._auth.currentUser);
+    if (cu && p.userId === cu.uid && String(p.id).indexOf('demo')!==0) {
+      var delBtn = document.createElement('button');
+      delBtn.textContent = '삭제';
+      delBtn.style.cssText = 'background:none;border:none;font-size:13px;color:var(--red,#C0392B);cursor:pointer;font-family:inherit;margin-right:12px';
+      delBtn.onclick = function(){ window.deleteCommPost(p.id, overlay); };
+      header.appendChild(delBtn);
+    }
     header.appendChild(closeBtn);
 
     // 본문 (스크롤)
@@ -2447,6 +2456,66 @@ window.searchListings = async function() {
     // 무료 등록
     alert('업체가 무료로 등록되었어요! 🍊\n사진 3장과 기본 프로필이 노출됩니다.');
     showSc('home'); setNav('home');
+  };
+
+  // 프로필 사진 업로드 (압축 후 표시 + 저장)
+  window.uploadAvatar = function(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        // 200px 정사각 압축
+        var size = 200;
+        var canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        var ctx = canvas.getContext('2d');
+        var min = Math.min(img.width, img.height);
+        var sx = (img.width - min)/2, sy = (img.height - min)/2;
+        ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+        var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        // 화면 적용
+        var av = document.getElementById('myAvatar');
+        if (av) {
+          av.textContent = '';
+          av.style.backgroundImage = 'url(' + dataUrl + ')';
+          av.style.backgroundSize = 'cover';
+          av.style.backgroundPosition = 'center';
+        }
+        // 저장 (로그인 시 Firebase)
+        var cu = window._currentUser || (window._auth && window._auth.currentUser);
+        if (cu) {
+          updateDoc(doc(db,'users',cu.uid), { avatarUrl: dataUrl }).catch(function(e){ console.log('아바타 저장:', e.message); });
+        }
+        try { localStorage.setItem('om_avatar', dataUrl); } catch(e){}
+        alert('프로필 사진이 변경되었어요! 🍊');
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 페이지 로드시 저장된 아바타 복원
+  (function(){
+    try {
+      var saved = localStorage.getItem('om_avatar');
+      if (saved) {
+        var av = document.getElementById('myAvatar');
+        if (av) { av.textContent=''; av.style.backgroundImage='url('+saved+')'; av.style.backgroundSize='cover'; av.style.backgroundPosition='center'; }
+      }
+    } catch(e){}
+  })();
+
+  // 커뮤니티 글 삭제
+  window.deleteCommPost = async function(postId, overlay) {
+    if (!confirm('이 글을 삭제하시겠어요?\n삭제하면 되돌릴 수 없어요.')) return;
+    try {
+      await deleteDoc(doc(db,'community',postId));
+      if (overlay) overlay.remove();
+      alert('글이 삭제되었어요.');
+      if (window.loadCommunity) window.loadCommunity();
+    } catch(e) { alert('삭제 실패: ' + e.message); }
   };
 </script>
 </head>
@@ -4161,7 +4230,13 @@ window.searchListings = async function() {
         </button>
       </div>
     </div>
-    <div class="pav">M</div>
+    <div style="position:relative;display:inline-block;cursor:pointer;margin-bottom:12px" onclick="document.getElementById('avatarUpload').click()">
+      <div class="pav" id="myAvatar" style="margin-bottom:0">M</div>
+      <div style="position:absolute;bottom:2px;right:2px;width:22px;height:22px;border-radius:50%;background:var(--or);border:2px solid #fff;display:flex;align-items:center;justify-content:center;pointer-events:none">
+        <svg viewBox="0 0 24 24" style="width:11px;height:11px;fill:none;stroke:#fff;stroke-width:2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </div>
+    </div>
+    <input id="avatarUpload" type="file" accept="image/*" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none" onchange="uploadAvatar(this)">
     <div class="pnm">박민지</div>
     <div class="parea"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 노스우드</div>
     <div class="pver"><div class="vdot"></div>OC 거주 인증 완료 &#183; 거래 14회</div>
