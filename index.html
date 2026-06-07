@@ -153,7 +153,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 .cst{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)}
 .cst svg{width:11px;height:11px;fill:none;stroke:var(--muted);stroke-width:1.6}
 /* boost badge */
-.boost-tag{position:absolute;top:9px;right:9px;font-size:10px;font-weight:700;
+.boost-tag{position:absolute;top:9px;left:9px;z-index:2;font-size:10px;font-weight:700;
   color:var(--w);background:var(--or);padding:2px 8px;border-radius:20px;
   display:flex;align-items:center;gap:3px}
 .boost-tag svg{width:9px;height:9px;fill:none;stroke:var(--w);stroke-width:2.5}
@@ -1362,9 +1362,16 @@ window.searchListings = async function() {
   };
 
   window.submitReview = async function() {
-    if (!window._currentUser || !window._selectedListing) return;
+    var ta = document.querySelector('#sc-review textarea');
     const score = window._reviewScore || 5;
-    const comment = document.querySelector('#sc-review textarea').value||'';
+    const comment = (ta && ta.value) || '';
+    // 비로그인/데모: 화면 피드백만
+    if (!window._currentUser || !window._selectedListing) {
+      alert('후기가 등록되었어요! 🍊 (로그인하면 상대방 프로필에 반영됩니다)');
+      if (ta) ta.value = '';
+      showSc('home'); setNav('home');
+      return;
+    }
     const targetId = window._selectedListing.userId;
     try {
       await addDoc(collection(db,'reviews'), {
@@ -1407,8 +1414,20 @@ window.searchListings = async function() {
     setTxt('userProfileName', nm);
     setTxt('userProfileNickname', nm);
     setTxt('userProfileAvatar', nm[0]);
-    setTxt('userProfileArea', '얼바인');
+    setTxt('userProfileArea', '얼바인 노스우드');
     setTxt('userProfileScore', '바이브 점수 0');
+    // 데모 판매자: 샘플 프로필
+    if (String(userId).indexOf('demo') === 0) {
+      setTxt('userProfileArea', '얼바인 노스우드');
+      setTxt('userProfileScore', '🍊 당도 92% · 거래 28회');
+      var lc = document.getElementById('userListings');
+      if (lc) lc.innerHTML = '<div style="padding:12px 16px;border-bottom:1px solid var(--line)"><div style="font-size:13px;font-weight:600;color:#3E2510">MacBook Pro 14\" M3 2023</div><div style="font-size:12px;color:var(--or);font-weight:700;margin-top:2px">$1,200</div></div><div style="padding:12px 16px"><div style="font-size:13px;font-weight:600;color:#3E2510">iPad Air 5세대</div><div style="font-size:12px;color:var(--or);font-weight:700;margin-top:2px">$450</div></div>';
+      var rc = document.getElementById('userReviews');
+      if (rc) rc.innerHTML = '<div style="padding:12px 16px;border-bottom:1px solid var(--line)"><div style="font-size:12px;color:var(--mid)">"친절하고 시간 약속 잘 지켜요 🍊"</div><div style="font-size:11px;color:var(--muted);margin-top:3px">— 이웃님</div></div><div style="padding:12px 16px"><div style="font-size:12px;color:var(--mid)">"물건 상태 설명이 정확했어요"</div><div style="font-size:11px;color:var(--muted);margin-top:3px">— 동네친구</div></div>';
+      var pc = document.getElementById('userPosts');
+      if (pc) pc.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)">작성한 글이 없어요</div>';
+      return;
+    }
     try {
       const userSnap = await getDoc(doc(db,'users',userId));
       if (userSnap.exists()) {
@@ -2472,7 +2491,7 @@ window.searchListings = async function() {
 
   <!-- ── 마켓 ── -->
   <div class="panel on" id="p-market">
-    <div class="premium-rotator" id="rotMarket" onclick="rotateClick('rotMarket')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
+    <div class="premium-rotator" id="rotMarket" onclick="rotateClick('rotMarket')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;height:72px;box-sizing:border-box">
         <div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
@@ -2571,7 +2590,7 @@ window.searchListings = async function() {
 
   <!-- ── 알바·레슨 ── -->
   <div class="panel" id="p-jobs">
-    <div class="premium-rotator" id="rotJobs" onclick="rotateClick('rotJobs')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
+    <div class="premium-rotator" id="rotJobs" onclick="rotateClick('rotJobs')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;height:72px;box-sizing:border-box">
       <div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
@@ -2623,7 +2642,7 @@ window.searchListings = async function() {
 
   <!-- ── 부동산·차 ── -->
   <div class="panel" id="p-realty">
-    <div class="premium-rotator" id="rotRealty" onclick="rotateClick('rotRealty')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
+    <div class="premium-rotator" id="rotRealty" onclick="rotateClick('rotRealty')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;height:72px;box-sizing:border-box">
       <div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
@@ -2692,7 +2711,7 @@ window.searchListings = async function() {
 
   <!-- ── 업체·맛집 ── -->
   <div class="panel" id="p-biz">
-    <div class="premium-rotator" id="rotBiz" onclick="rotateClick('rotBiz')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px">
+    <div class="premium-rotator" id="rotBiz" onclick="rotateClick('rotBiz')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;height:72px;box-sizing:border-box">
       <div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div>
@@ -2779,7 +2798,7 @@ window.searchListings = async function() {
 
   <!-- ── 커뮤니티 (수다방+모임 통합) ── -->
   <div class="panel" id="p-comm">
-    <div class="premium-rotator" id="rotComm" onclick="rotateClick('rotComm')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px"><div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div><div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div><div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div><div class="rot-sub" style="font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:rgba(255,255,255,.5);stroke-width:2;fill:none;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg></div>
+    <div class="premium-rotator" id="rotComm" onclick="rotateClick('rotComm')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;height:72px;box-sizing:border-box"><div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div><div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div><div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div><div class="rot-sub" style="font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:rgba(255,255,255,.5);stroke-width:2;fill:none;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg></div>
     <div class="subcats">
       <div class="scinner">
         <button class="sch on" onclick="selSub(this)">전체</button>
@@ -2804,20 +2823,20 @@ window.searchListings = async function() {
     <div class="iad" onclick="openSponsor('academy')"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z"/></svg></div><div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">스타 아카데미 &#8212; SAT/AP 전문</div><div class="iad-s">체험 수업 무료 &#183; 얼바인</div></div><div class="iad-arr">&#8250;</div></div>
 
     <!-- 모임 within 커뮤니티 -->
-    <div class="sech" style="padding-top:8px"><div class="secht">동네 모임 Gatherings</div><div class="secha">+ 만들기</div></div>
-    <div class="meetcard">
+    <div class="sech" style="padding-top:8px"><div class="secht">동네 모임 Gatherings</div><div class="secha" onclick="window._selectedSubcat='모임';showSc('comm-write')" style="cursor:pointer">+ 만들기</div></div>
+    <div class="meetcard" onclick="openMeetDetail(this)" style="cursor:pointer">
       <div class="mc-top">
         <div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div>
         <div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park 테니스장</div></div>
       </div>
-      <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명 참가</span><button class="mc-join">참가</button></div>
+      <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명 참가</span><button class="mc-join" onclick="event.stopPropagation();joinMeet(this)">참가</button></div>
     </div>
-    <div class="meetcard">
+    <div class="meetcard" onclick="openMeetDetail(this)" style="cursor:pointer">
       <div class="mc-top">
         <div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">12</div></div>
         <div><div class="mc-t">한인 독서모임 — 4월 책</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 스타벅스 &#183; Culver Dr.</div></div>
       </div>
-      <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#FAD4C8">A</div><div class="mc-av" style="background:#C8D4FA">B</div></div><span class="mc-cnt">+6명 참가</span><button class="mc-join">참가</button></div>
+      <div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#FAD4C8">A</div><div class="mc-av" style="background:#C8D4FA">B</div></div><span class="mc-cnt">+6명 참가</span><button class="mc-join" onclick="event.stopPropagation();joinMeet(this)">참가</button></div>
     </div>
     
     <div class="pb80"></div>
@@ -2825,7 +2844,7 @@ window.searchListings = async function() {
 
   <!-- ── 나눔 ── -->
   <div class="panel" id="p-donate">
-    <div class="premium-rotator" id="rotDonate" onclick="rotateClick('rotDonate')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;min-height:64px"><div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div><div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div><div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div><div class="rot-sub" style="font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:rgba(255,255,255,.5);stroke-width:2;fill:none;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg></div>
+    <div class="premium-rotator" id="rotDonate" onclick="rotateClick('rotDonate')" style="margin:10px 14px;border-radius:14px;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,#2C1A0E,#3E2510);padding:14px;display:flex;align-items:center;gap:12px;height:72px;box-sizing:border-box"><div class="rot-icon" style="width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🍊</div><div style="flex:1;min-width:0"><div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px">Sponsored</div><div class="rot-title" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">로딩 중...</div><div class="rot-sub" style="font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div><svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:rgba(255,255,255,.5);stroke-width:2;fill:none;flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg></div>
     
     
     
@@ -3171,23 +3190,9 @@ window.searchListings = async function() {
     <div class="wsep"></div>
     <div style="background:linear-gradient(135deg,#2C1A0E,#3E2510);border-radius:var(--rl);padding:16px;margin-bottom:14px">
       <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px">더 많이 노출하고 싶다면</div>
-      <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:4px">스폰서 광고로 업그레이드</div>
-      <div style="font-size:12px;color:#C9B49A;margin-bottom:12px">피드 상단 고정 + 이웃맵 강조 핀 + 검색 상단 노출</div>
-      <div style="display:flex;gap:8px;margin-bottom:12px">
-        <div style="flex:1;background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:15px;font-weight:700;color:#F07040">$299<small style="font-size:10px;font-weight:400;color:#C9B49A">/월</small></div>
-          <div style="font-size:10px;color:#C9B49A;margin-top:2px">Basic</div>
-        </div>
-        <div style="flex:1;background:rgba(232,87,26,.3);border:1px solid rgba(232,87,26,.5);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:15px;font-weight:700;color:#F07040">$699<small style="font-size:10px;font-weight:400;color:#C9B49A">/월</small></div>
-          <div style="font-size:10px;color:#F07040;margin-top:2px">Pro 인기</div>
-        </div>
-        <div style="flex:1;background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:15px;font-weight:700;color:#F07040">$1,499<small style="font-size:10px;font-weight:400;color:#C9B49A">/월</small></div>
-          <div style="font-size:10px;color:#C9B49A;margin-top:2px">Premium</div>
-        </div>
-      </div>
-      <button onclick="showSc('sponsor')" style="width:100%;padding:10px;background:var(--or);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">광고 패키지 자세히 보기</button>
+      <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:4px">유료 광고로 업그레이드 🍊</div>
+      <div style="font-size:12px;color:#C9B49A;margin-bottom:12px;line-height:1.6">⚡ 반짝 $29.99/2주 · 🍊 오렌지 $39.99/4주 · 👑 프리미엄 $49.99/4주<br>사진 10장 + 쿠폰 + 상단 노출 + 이웃맵 핀</div>
+      <button onclick="showSc('ad-info')" style="width:100%;padding:11px;background:var(--or);border:none;border-radius:9px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">광고 등급 자세히 보기</button>
     </div>
     <!-- 쿠폰 (유료 전용) -->
     <div id="bizCouponSection" style="display:none">
@@ -3819,7 +3824,7 @@ window.searchListings = async function() {
     <div class="sech"><div class="secht">이 동네 수다방<small>&#183; 노스우드</small></div><div class="secha" onclick="showSc('home');switchMainById('p-comm')">더 보기</div></div>
     <div class="comm-card" onclick="window._openPostDetail({id:'demo_post1',category:'수다',title:'얼바인 스펙트럼 주차 너무 힘들죠?',body:'토요일 저녁 B2가 5시에 이미 만차였어요. 보통 어느 층에 세우시나요? 팁 있으면 공유해주세요!',nickname:'박민지',neighborhood:'노스우드',likeCount:12,commentCount:5,images:[]})" style="cursor:pointer"><div class="cc-top"><span class="cc-cat cc-talk">수다</span><span class="cc-time">5분 전</span></div><div class="cc-title">얼바인 스펙트럼 주차 너무 힘들죠? 😅</div><div class="cc-prev">토요일 저녁 B2가 5시에 이미 만차... 보통 어느 층 세워요?</div><div class="cc-foot"><div class="cc-av">M</div><span class="cc-author">박민지</span></div></div>
     <div class="sech" style="padding-top:8px"><div class="secht">이 동네 모임<small>&#183; 노스우드</small></div><div class="secha" onclick="showSc('home');switchMainById('p-comm')">더 보기</div></div>
-    <div class="meetcard"><div class="mc-top"><div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div><div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park</div></div></div><div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명</span><button class="mc-join">참가</button></div></div>
+    <div class="meetcard" onclick="openMeetDetail(this)" style="cursor:pointer"><div class="mc-top"><div class="mc-date"><div class="mc-mon">APR</div><div class="mc-day">5</div></div><div><div class="mc-t">얼바인 한인 테니스 클럽</div><div class="mc-loc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Heritage Park</div></div></div><div class="mc-foot"><div class="mc-avs"><div class="mc-av" style="background:#EAD9C8">M</div><div class="mc-av" style="background:#D4E8D4">J</div></div><span class="mc-cnt">+12명</span><button class="mc-join" onclick="event.stopPropagation();joinMeet(this)">참가</button></div></div>
     <div style="height:80px"></div>
   </div>
 </div>
@@ -4300,6 +4305,16 @@ function showSc(n){
   var fab=document.getElementById('fab');
   if(fab)fab.style.display=(n==='home')?'flex':'none';
   if(n==='biz-write' && window.selectBizPlan) selectBizPlan('free');
+  if((n==='write') && window._selectedSubcat){
+    setTimeout(function(){
+      document.querySelectorAll('#sc-write .catc').forEach(function(c){
+        if(c.textContent.trim().indexOf(window._selectedSubcat)===0){
+          document.querySelectorAll('#sc-write .catc').forEach(function(x){x.classList.remove('on');});
+          c.classList.add('on');
+        }
+      });
+    },50);
+  }
 }
 
 function goHome(){
@@ -4397,6 +4412,34 @@ function toggleUrgent(type){
     var title = box.querySelector('div[style*="font-weight:700"]');
     if(title) title.style.color = on ? '#fff' : 'var(--or)';
   }
+}
+
+
+// 동네 모임 참가/상세
+function joinMeet(btn){
+  var joined = btn.dataset.joined === '1';
+  if(joined){
+    btn.dataset.joined = '0';
+    btn.textContent = '참가';
+    btn.style.background = '';
+    btn.style.color = '';
+    alert('모임 참가를 취소했어요.');
+  } else {
+    btn.dataset.joined = '1';
+    btn.textContent = '참가 완료 ✓';
+    btn.style.background = 'var(--green-bg,#EFF7F2)';
+    btn.style.color = 'var(--green,#3A7D52)';
+    alert('모임에 참가 신청됐어요! 🍊\n주최자가 확인 후 채팅으로 연락드려요.');
+  }
+}
+function openMeetDetail(card){
+  var title = card.querySelector('.mc-t');
+  var loc = card.querySelector('.mc-loc');
+  var cnt = card.querySelector('.mc-cnt');
+  var t = title ? title.textContent : '동네 모임';
+  var l = loc ? loc.textContent.trim() : '';
+  var c = cnt ? cnt.textContent : '';
+  alert('🍊 ' + t + '\n\n📍 ' + l + '\n👥 ' + c + '\n\n참가하려면 카드의 "참가" 버튼을 눌러주세요!');
 }
 
 function selCat(el){
@@ -4777,6 +4820,16 @@ function showSc(n){
   var fab=document.getElementById('fab');
   if(fab)fab.style.display=(n==='home')?'flex':'none';
   if(n==='biz-write' && window.selectBizPlan) selectBizPlan('free');
+  if((n==='write') && window._selectedSubcat){
+    setTimeout(function(){
+      document.querySelectorAll('#sc-write .catc').forEach(function(c){
+        if(c.textContent.trim().indexOf(window._selectedSubcat)===0){
+          document.querySelectorAll('#sc-write .catc').forEach(function(x){x.classList.remove('on');});
+          c.classList.add('on');
+        }
+      });
+    },50);
+  }
 }
 
 function goHome(){
@@ -4874,6 +4927,34 @@ function toggleUrgent(type){
     var title = box.querySelector('div[style*="font-weight:700"]');
     if(title) title.style.color = on ? '#fff' : 'var(--or)';
   }
+}
+
+
+// 동네 모임 참가/상세
+function joinMeet(btn){
+  var joined = btn.dataset.joined === '1';
+  if(joined){
+    btn.dataset.joined = '0';
+    btn.textContent = '참가';
+    btn.style.background = '';
+    btn.style.color = '';
+    alert('모임 참가를 취소했어요.');
+  } else {
+    btn.dataset.joined = '1';
+    btn.textContent = '참가 완료 ✓';
+    btn.style.background = 'var(--green-bg,#EFF7F2)';
+    btn.style.color = 'var(--green,#3A7D52)';
+    alert('모임에 참가 신청됐어요! 🍊\n주최자가 확인 후 채팅으로 연락드려요.');
+  }
+}
+function openMeetDetail(card){
+  var title = card.querySelector('.mc-t');
+  var loc = card.querySelector('.mc-loc');
+  var cnt = card.querySelector('.mc-cnt');
+  var t = title ? title.textContent : '동네 모임';
+  var l = loc ? loc.textContent.trim() : '';
+  var c = cnt ? cnt.textContent : '';
+  alert('🍊 ' + t + '\n\n📍 ' + l + '\n👥 ' + c + '\n\n참가하려면 카드의 "참가" 버튼을 눌러주세요!');
 }
 
 function selCat(el){
