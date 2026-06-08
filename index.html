@@ -706,8 +706,8 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
         try {
           var cu = window._currentUser;
           if (!cu) return;
-          // 판매중 개수
-          var lq = query(collection(db,'listings'), where('userId','==',cu.uid), where('status','==','active'), limit(50));
+          // 내 매물 전체 개수 (판매내역 목록과 동일 기준)
+          var lq = query(collection(db,'listings'), where('userId','==',cu.uid), limit(50));
           var ls = await getDocs(lq).catch(function(){return {docs:[]};});
           var selling = ls.docs.length;
           var st = document.getElementById('statSelling');
@@ -4303,7 +4303,7 @@ window.searchListings = async function() {
     <div class="pstats">
       <div class="pstat" onclick="window.showSalesHistory && showSalesHistory()" style="cursor:pointer"><div class="psn" id="statTrades">-</div><div class="psl">거래횟수</div></div>
       <div class="pstat" onclick="window.showSavedListings && showSavedListings()" style="cursor:pointer"><div class="psn" id="statSaved">-</div><div class="psl">관심목록</div></div>
-      <div class="pstat" onclick="window.showSalesHistory && showSalesHistory()" style="cursor:pointer"><div class="psn" id="statSelling">-</div><div class="psl">판매중</div></div>
+      <div class="pstat" onclick="window.showSalesHistory && showSalesHistory()" style="cursor:pointer"><div class="psn" id="statSelling">-</div><div class="psl">내 매물</div></div>
     </div>
     <div class="pmenu">
       <div class="pmi" onclick="showSalesHistory()" style="cursor:pointer"><div class="pmi-ic"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div><span class="pmi-t">나의 판매내역 My Listings</span><span class="pmi-cnt">3</span><span class="pmi-r">&#8250;</span></div>
@@ -4826,12 +4826,7 @@ function setOrg(clickedBtn,rowIdx,val){
   orgScores[rowIdx]=val;
   calcDangdo();
 }
-function submitReview(){
-  calcDangdo();
-  var btn=document.querySelector('.rev-submit');
-  btn.textContent='후기 등록 완료! &#127818;';btn.style.background='var(--green)';
-  setTimeout(function(){showSc('profile');},1400);
-}
+// submitReview → module script에서 처리
 
 /* KEYWORDS */
 function addKw(){
@@ -5033,27 +5028,12 @@ function checkPhoneInput(inp, btnId){
 }
 var authTimer=null;
 // sendSMS → module script에서 처리
-function verifyOTP(type){
-  if(type==='signup'){
-    var setup=document.getElementById('profileSetup');
-    if(setup)setup.style.display='block';
-  } else {
-    // Login complete
-    showSc('home');setNav('home');
-  }
-}
+// verifyOTP → module script(Firebase)에서 처리
 function toggleAllAgree(cb){
   document.querySelectorAll('.agree-item').forEach(function(c){c.checked=cb.checked;});
 }
-function socialLogin(provider){
-  // Demo: go straight to home
-  setTimeout(function(){showSc('home');setNav('home');},400);
-}
-function completeSignup(){
-  // Demo: go to neighborhood verification then home
-  showSc('home');setNav('home');
-  setTimeout(function(){openModal();},600);
-}
+// socialLogin → module script에서 처리
+// completeSignup → module script에서 처리
 function goProfile(){showSc('profile');setNav('profile');}
 function checkAndGoProfile(){
   var u=window._currentUser||(window._auth&&window._auth.currentUser);
@@ -5451,12 +5431,7 @@ function setOrg(clickedBtn,rowIdx,val){
   orgScores[rowIdx]=val;
   calcDangdo();
 }
-function submitReview(){
-  calcDangdo();
-  var btn=document.querySelector('.rev-submit');
-  btn.textContent='후기 등록 완료! &#127818;';btn.style.background='var(--green)';
-  setTimeout(function(){showSc('profile');},1400);
-}
+// submitReview → module script에서 처리
 
 /* KEYWORDS */
 function addKw(){
@@ -5598,27 +5573,12 @@ function checkPhoneInput(inp, btnId){
 }
 var authTimer=null;
 // sendSMS → module script에서 처리
-function verifyOTP(type){
-  if(type==='signup'){
-    var setup=document.getElementById('profileSetup');
-    if(setup)setup.style.display='block';
-  } else {
-    // Login complete
-    showSc('home');setNav('home');
-  }
-}
+// verifyOTP → module script(Firebase)에서 처리
 function toggleAllAgree(cb){
   document.querySelectorAll('.agree-item').forEach(function(c){c.checked=cb.checked;});
 }
-function socialLogin(provider){
-  // Demo: go straight to home
-  setTimeout(function(){showSc('home');setNav('home');},400);
-}
-function completeSignup(){
-  // Demo: go to neighborhood verification then home
-  showSc('home');setNav('home');
-  setTimeout(function(){openModal();},600);
-}
+// socialLogin → module script에서 처리
+// completeSignup → module script에서 처리
 function goProfile(){showSc('profile');setNav('profile');}
 function checkAndGoProfile(){
   var u=window._currentUser||(window._auth&&window._auth.currentUser);
