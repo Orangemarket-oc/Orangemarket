@@ -1051,6 +1051,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       const list = snap.docs
         .map(d=>({id:d.id,...d.data()}))
         .filter(function(l){ return blocked.indexOf(l.userId) < 0; })
+        .filter(function(l){ return !l.boardType || l.boardType==='market'; })
         .filter(function(l){ return !catFilter || (l.category && l.category.indexOf(catFilter) >= 0); })
         .sort((a,b)=>{
           if(a.isBoost&&!b.isBoost) return -1;
@@ -1101,16 +1102,29 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
   }
 
   function _loadDetail(l) {
-    const t = document.getElementById('detailTitle');
-    const p = document.getElementById('detailPrice');
-    const d = document.getElementById('detailDesc');
-    const n = document.getElementById('detailNeighborhood');
-    if (t) t.textContent = l.title;
-    if (p) p.textContent = l.isFree ? '무료 나눔' : '$'+l.price && l.price.toLocaleString();
-    if (d) d.textContent = l.description || '';
-    if (n) n.textContent = l.neighborhood || '';
-    // 조회수 증가
-    updateDoc(doc(db,'listings',l.id), {viewCount:increment(1)}).catch(()=>{});
+    var setTxt = function(id, txt){ var el=document.getElementById(id); if(el) el.textContent=txt; };
+    setTxt('dTitle', l.title || '');
+    setTxt('dPrice', l.isFree ? '무료 나눔' : ('$' + (l.price||0).toLocaleString()));
+    setTxt('dDesc', l.description || '');
+    setTxt('dCat', l.category || '');
+    setTxt('dSeller', l.sellerNickname || '이웃');
+    var av = document.getElementById('dSellerAv');
+    if (av) av.textContent = (l.sellerNickname || '?').charAt(0);
+    // 사진 표시
+    var photo = document.getElementById('dPhoto');
+    if (photo) {
+      if (l.images && l.images[0]) {
+        photo.style.background = 'url(' + l.images[0] + ') center/cover';
+        photo.innerHTML = (l.images.length>1) ? '<div class="ph-cnt-b">1 / ' + l.images.length + '</div>' : '';
+      } else {
+        photo.style.background = 'var(--ivory)';
+        photo.innerHTML = '<div style="font-size:64px">📦</div>';
+      }
+    }
+    // 조회수 증가 (실제 매물만)
+    if (l.id && String(l.id).indexOf('demo')!==0 && String(l.id).indexOf('local')!==0) {
+      updateDoc(doc(db,'listings',l.id), {viewCount:increment(1)}).catch(function(){});
+    }
   }
 
   // ── 내 매물 목록 ──
@@ -2496,8 +2510,9 @@ window.searchListings = async function() {
       if (window.showApplyAd) window.showApplyAd();
       return;
     }
-    // 무료 등록
-    alert('업체가 무료로 등록되었어요! 🍊\n사진 3장과 기본 프로필이 노출됩니다.');
+    // 무료 등록 → 통합 보드로
+    if (window.submitBoard) { window.submitBoard('biz'); return; }
+    alert('업체가 무료로 등록되었어요! 🍊');
     showSc('home'); setNav('home');
   };
 
@@ -2560,6 +2575,144 @@ window.searchListings = async function() {
       if (window.loadCommunity) window.loadCommunity();
     } catch(e) { alert('삭제 실패: ' + e.message); }
   };
+
+  // ════ 통합 게시판 등록/로드 (알바/레슨/부동산/업체) ════
+  var BOARD_CONFIG = {
+    job:    { title:'jobTitle',    price:'jobPay',     desc:'jobDesc',    extra:'jobBiz',   feedId:'jobFeed',    label:'공고' },
+    lesson: { title:'lessonName',  price:'lessonPay',  desc:'lessonDesc', extra:null,        feedId:'lessonFeed', label:'레슨' },
+    realty: { title:'realtyTitle', price:'realtyPrice',desc:'realtyDesc', extra:null,        feedId:'realtyFeed', label:'매물' },
+    biz:    { title:'bizName',     price:null,         desc:'bizDesc',    extra:'bizAddr',  feedId:'bizFeed',    label:'업체' }
+  };
+
+  window.submitBoard = async function(boardType) {
+    var cfg = BOARD_CONFIG[boardType];
+    if (!cfg) return;
+    var getV = function(id){ var el=id&&document.getElementById(id); return el?el.value.trim():''; };
+    var title = getV(cfg.title);
+    var price = cfg.price ? getV(cfg.price) : '0';
+    var desc  = getV(cfg.desc);
+    var extra = cfg.extra ? getV(cfg.extra) : '';
+    if (!title) { alert('제목/이름을 입력해주세요.'); return; }
+
+    // 선택된 소카테고리
+    var panelId = boardType==='lesson' ? 'sc-lesson-write' : ('sc-'+boardType+'-write');
+    var catEl = document.querySelector('#'+panelId+' .catc.on');
+    var cat = catEl ? catEl.textContent.trim() : boardType;
+    // 부동산 급매 부스트
+    var boost = false;
+    var boostEl = document.getElementById('realtyBoost');
+    if (boardType==='realty' && boostEl && boostEl.checked) boost = true;
+    if (window._urgentBoost && window._urgentBoost[boardType]) boost = true;
+
+    var cu = window._currentUser || (window._auth && window._auth.currentUser);
+    var photos = window._pendingPhotos || [];
+
+    var data = {
+      boardType: boardType,
+      title: title,
+      price: price ? Number(price.replace(/[^0-9.]/g,''))||0 : 0,
+      description: desc,
+      extra: extra,
+      category: cat,
+      neighborhood: (window._userProfile && window._userProfile.neighborhood) || 'OC',
+      sellerNickname: (window._userProfile && window._userProfile.nickname) || '이웃',
+      status: 'active',
+      isBoost: boost,
+      viewCount: 0,
+      images: photos
+    };
+
+    if (!cu) {
+      // 비로그인 로컬 등록
+      if (!window._localBoards) window._localBoards = {};
+      if (!window._localBoards[boardType]) window._localBoards[boardType] = [];
+      data.id = 'local_'+Date.now();
+      data.userId = 'local_me';
+      data.createdAt = { seconds: Math.floor(Date.now()/1000) };
+      window._localBoards[boardType].unshift(data);
+      alert(cfg.label+' 등록되었어요! 🍊\n(로그인하면 모두에게 보여요)');
+      window._pendingPhotos = [];
+      window.loadBoard(boardType);
+      showSc('home'); setNav('home');
+      return;
+    }
+
+    try {
+      data.userId = cu.uid;
+      data.createdAt = serverTimestamp();
+      await addDoc(collection(db,'listings'), data);
+      window._pendingPhotos = [];
+      alert(cfg.label+'가 등록되었어요! 🍊');
+      window.loadBoard(boardType);
+      showSc('home'); setNav('home');
+    } catch(e) {
+      alert('등록 실패: ' + e.message);
+    }
+  };
+
+  window.loadBoard = async function(boardType) {
+    var cfg = BOARD_CONFIG[boardType];
+    if (!cfg) return;
+    var items = [];
+    // Firebase
+    try {
+      var q = query(collection(db,'listings'), where('boardType','==',boardType), where('status','==','active'), limit(50));
+      var snap = await getDocs(q).catch(function(){return {docs:[]};});
+      items = snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+    } catch(e) { console.log('보드 로드:', e.message); }
+    // 로컬 (비로그인)
+    if (window._localBoards && window._localBoards[boardType]) {
+      items = window._localBoards[boardType].concat(items);
+    }
+    var blocked = (window.getBlockedUsers && window.getBlockedUsers()) || [];
+    items = items.filter(function(l){ return blocked.indexOf(l.userId)<0; })
+      .sort(function(a,b){
+        if(a.isBoost&&!b.isBoost) return -1;
+        if(!a.isBoost&&b.isBoost) return 1;
+        return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0);
+      });
+    _renderBoard(boardType, items, cfg);
+  };
+
+  function _renderBoard(boardType, items, cfg) {
+    var panelId = (boardType==='job'||boardType==='lesson') ? 'p-jobs'
+                : boardType==='realty' ? 'p-realty'
+                : boardType==='biz' ? 'p-biz' : 'p-market';
+    var panel = document.getElementById(panelId);
+    if (!panel) return;
+    var feed = document.getElementById(cfg.feedId);
+    if (!feed) {
+      feed = document.createElement('div');
+      feed.id = cfg.feedId;
+      var sech = panel.querySelector('.sech');
+      if (sech && sech.parentNode) sech.parentNode.insertBefore(feed, sech.nextSibling);
+      else panel.appendChild(feed);
+    }
+    feed.innerHTML = '';
+    if (items.length===0) return;
+    // 실제 글 있으면 데모 카드 숨기기
+    panel.querySelectorAll('.jcard,.rcard,.bizcard,.card:not(.rc)').forEach(function(c){
+      if(!c.closest('#'+cfg.feedId)) c.style.display='none';
+    });
+    items.forEach(function(l){
+      var el = document.createElement('div');
+      el.className = 'card rc';
+      el.style.cssText='display:flex;gap:12px;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);cursor:pointer;position:relative';
+      var boostBadge = l.isBoost ? '<div class="boost-tag">'+(boardType==='job'?'급구':boardType==='realty'?'급매':'BOOST')+'</div>' : '';
+      var thumb = (l.images&&l.images[0])
+        ? '<img src="'+l.images[0]+'" style="width:84px;height:84px;border-radius:10px;object-fit:cover;flex-shrink:0">'
+        : '<div style="width:84px;height:84px;border-radius:10px;background:var(--ivory);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:26px">'+(boardType==='job'?'💼':boardType==='lesson'?'📚':boardType==='realty'?'🏠':'🏪')+'</div>';
+      var priceTxt = cfg.price ? ('$'+(l.price||0).toLocaleString()+(boardType==='job'?'/시':boardType==='realty'?'':'')) : (l.extra||'');
+      el.innerHTML = boostBadge + thumb
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:14px;font-weight:600;color:#3E2510;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+l.title+'</div>'
+        + '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">'+(l.category||'')+' · '+(l.neighborhood||'OC')+'</div>'
+        + '<div style="font-size:15px;font-weight:700;color:var(--or)">'+priceTxt+'</div>'
+        + '</div>';
+      el.onclick = function(){ window._selectedListing=l; showSc('detail'); _loadDetail(l); };
+      feed.appendChild(el);
+    });
+  }
 </script>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#E8571A">
@@ -3109,7 +3262,7 @@ window.searchListings = async function() {
       </div>
       <div style="font-size:11px;color:var(--muted);line-height:1.6">🚀 급매 부스트 · $9.99/주 — 부동산·차 목록 최상단 7일 고정 노출. 더 빨리 거래하세요!</div>
     </div>
-    <button class="wsub" onclick="submitRealty()">등록하기 Post Listing</button>
+    <button class="wsub" onclick="submitBoard('realty')">등록하기 Post Listing</button>
   </div>
 </div>
 
@@ -3176,9 +3329,9 @@ window.searchListings = async function() {
     </div>
     <div class="wsep"></div>
     <div class="wsec">하는 일 Job Description</div>
-    <input class="winp" placeholder="예: 홀서빙, 카운터, 주방보조...">
+    <input class="winp" id="jobTitle" placeholder="예: 홀서빙, 카운터, 주방보조...">
     <div class="wsec">업체명 &amp; 위치</div>
-    <input class="winp" placeholder="업체명 Business Name">
+    <input class="winp" id="jobBiz" placeholder="업체명 Business Name">
     <input class="winp" placeholder="주소 또는 교차로 (예: Culver &amp; Alton, Irvine)">
     <div class="wsec">근무 요일 Days</div>
     <div class="catgrid">
@@ -3201,14 +3354,14 @@ window.searchListings = async function() {
     <div class="wrow">
       <div style="flex:1;display:flex;align-items:center;gap:4px;border:1.5px solid var(--line);border-radius:var(--r);padding:10px 12px;background:var(--w)">
         <span style="font-size:14px;font-weight:600;color:var(--muted)">$</span>
-        <input type="number" min="15" style="flex:1;border:none;background:none;font-size:15px;font-weight:700;color:var(--ink);outline:none;font-family:inherit" placeholder="18.00">
+        <input type="number" min="15" style="flex:1;border:none;background:none;font-size:15px;font-weight:700;color:var(--ink);outline:none;font-family:inherit" id="jobPay" placeholder="18.00">
         <span style="font-size:12px;color:var(--muted)">/hr</span>
       </div>
       <select class="winp" style="margin-bottom:0;flex:1"><option>경력 무관</option><option>신입 환영</option><option>경력 우대</option></select>
     </div>
     <div style="height:11px"></div>
     <div class="wsec">상세 내용 (선택)</div>
-    <textarea class="wta" placeholder="복리후생, 유니폼, 식사 제공 여부 등 추가 내용을 적어주세요."></textarea>
+    <textarea class="wta" id="jobDesc" placeholder="복리후생, 유니폼, 식사 제공 여부 등 추가 내용을 적어주세요."></textarea>
     <div class="wsec">연락처 Contact</div>
     <input class="winp" type="tel" placeholder="+1 (949) 000-0000">
     <div class="wsep"></div>
@@ -3217,7 +3370,7 @@ window.searchListings = async function() {
       <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--or)">급구 부스트</div><div style="font-size:11px;color:var(--muted);margin-top:1px">$4.99 · 3일간 최상단 고정 노출</div></div>
       <div id="jobUrgentChk" style="width:22px;height:22px;border-radius:6px;border:2px solid var(--or-bd);display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff"></div>
     </div>
-    <button class="wsub">공고 올리기 Post Job</button>
+    <button class="wsub" onclick="submitBoard('job')">공고 올리기 Post Job</button>
     <div style="height:24px"></div>
   </div>
 </div>
@@ -3245,8 +3398,8 @@ window.searchListings = async function() {
     </div>
     <div class="wsep"></div>
     <div class="wsec">강사 소개 About You</div>
-    <input class="winp" placeholder="이름 또는 닉네임 (표시용)">
-    <textarea class="wta" placeholder="경력, 자격증, 특기 등 간단히 소개해 주세요."></textarea>
+    <input class="winp" id="lessonName" placeholder="이름 또는 닉네임 (표시용)">
+    <textarea class="wta" id="lessonDesc" placeholder="경력, 자격증, 특기 등 간단히 소개해 주세요."></textarea>
     <div class="wsec">대상 &amp; 수준 Level</div>
     <div class="catgrid">
       <button class="catc" onclick="this.classList.toggle('on')">어린이</button>
@@ -3276,12 +3429,12 @@ window.searchListings = async function() {
     <div class="wsec">레슨비 Lesson Fee</div>
     <div style="display:flex;align-items:center;gap:4px;border:1.5px solid var(--line);border-radius:var(--r);padding:10px 12px;background:var(--w);margin-bottom:11px">
       <span style="font-size:14px;font-weight:600;color:var(--muted)">$</span>
-      <input type="number" style="flex:1;border:none;background:none;font-size:15px;font-weight:700;color:var(--ink);outline:none;font-family:inherit" placeholder="50.00">
+      <input type="number" style="flex:1;border:none;background:none;font-size:15px;font-weight:700;color:var(--ink);outline:none;font-family:inherit" id="lessonPay" placeholder="50.00">
       <span style="font-size:12px;color:var(--muted)">/시간</span>
     </div>
     <div class="wsec">연락처 Contact</div>
     <input class="winp" type="tel" placeholder="+1 (949) 000-0000">
-    <button class="wsub">레슨 공고 올리기</button>
+    <button class="wsub" onclick="submitBoard('lesson')">레슨 공고 올리기</button>
     <div style="height:24px"></div>
   </div>
 </div>
@@ -3322,8 +3475,8 @@ window.searchListings = async function() {
     </div>
     <div class="wsep"></div>
     <div class="wsec">기본 정보</div>
-    <input class="winp" placeholder="업체명 Business Name">
-    <input class="winp" placeholder="주소 Address (Street, City, CA)">
+    <input class="winp" id="bizName" placeholder="업체명 Business Name">
+    <input class="winp" id="bizAddr" placeholder="주소 Address (Street, City, CA)">
     <input class="winp" type="tel" placeholder="전화번호 Phone +1 (xxx) xxx-xxxx">
     <input class="winp" placeholder="웹사이트 / 인스타 (선택)">
     <div class="wsec">영업시간 Hours</div>
@@ -3334,7 +3487,7 @@ window.searchListings = async function() {
     </div>
     <div style="height:11px"></div>
     <div class="wsec">업체 소개</div>
-    <textarea class="wta" placeholder="업체 소개, 특장점, 주요 메뉴/서비스를 적어주세요."></textarea>
+    <textarea class="wta" id="bizDesc" placeholder="업체 소개, 특장점, 주요 메뉴/서비스를 적어주세요."></textarea>
     <div class="wsep"></div>
     <div style="background:linear-gradient(135deg,#2C1A0E,#3E2510);border-radius:var(--rl);padding:16px;margin-bottom:14px">
       <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px">더 많이 노출하고 싶다면</div>
@@ -3672,7 +3825,7 @@ window.searchListings = async function() {
     <div class="dhead-t">상품 상세 Item Detail</div>
     <button class="ibtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
   </div>
-  <div class="ph-main th-elec">
+  <div id="dPhoto" class="ph-main th-elec">
     <svg style="width:80px;height:80px;fill:none;stroke:#4A90D9;stroke-width:.9;stroke-linecap:round" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
     <div class="ph-cnt-b">1 / 10</div>
   </div>
@@ -3683,8 +3836,8 @@ window.searchListings = async function() {
   </div>
   <div class="dscroll">
     <div class="seller-row" onclick="var l=window._selectedListing; if(l&&l.userId){window.viewUserPosts(l.userId,l.sellerNickname);}" style="cursor:pointer">
-      <div class="sav">J</div>
-      <div><div class="snm">Jason K.</div><div class="sinf">얼바인 &#183; 거래 28회</div></div>
+      <div class="sav" id="dSellerAv">J</div>
+      <div><div class="snm" id="dSeller">Jason K.</div><div class="sinf">얼바인 &#183; 거래 28회</div></div>
       <div class="srt"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>4.9</div>
     </div>
     <div class="dblock">
@@ -3692,9 +3845,9 @@ window.searchListings = async function() {
         <div class="dprice" id="dPrice">$1,200</div>
         <div class="dprev" id="dPrev"></div>
       </div>
-      <div class="dtitle">MacBook Pro 14&#34; M3 2023</div>
-      <div class="dcat">가전/전자 Electronics &#183; 컴퓨터</div>
-      <div class="ddesc">M3 칩, 16GB RAM, 512GB SSD. 구매 6개월. 케이스 씌워 사용 — 흠집 없음. 배터리 98%. 박스/충전기 포함. 직거래 희망 (얼바인 스펙트럼 근처).</div>
+      <div class="dtitle" id="dTitle">MacBook Pro 14&#34; M3 2023</div>
+      <div class="dcat" id="dCat">가전/전자 Electronics &#183; 컴퓨터</div>
+      <div class="ddesc" id="dDesc">M3 칩, 16GB RAM, 512GB SSD. 구매 6개월. 케이스 씌워 사용 — 흠집 없음. 배터리 98%. 박스/충전기 포함. 직거래 희망 (얼바인 스펙트럼 근처).</div>
       <div class="dstats">
         <div class="dstat"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>142</div>
         <div class="dstat"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>24</div>
@@ -4500,6 +4653,9 @@ function switchMain(btn,pid){
   document.getElementById(pid).classList.add('on');
   if(pid==='p-comm' && window.loadCommunity) window.loadCommunity();
   if(pid==='p-market' && window.loadListings) window.loadListings();
+  if(pid==='p-jobs' && window.loadBoard){ window.loadBoard('job'); window.loadBoard('lesson'); }
+  if(pid==='p-realty' && window.loadBoard) window.loadBoard('realty');
+  if(pid==='p-biz' && window.loadBoard) window.loadBoard('biz');
 }
 function switchMainById(pid){
   var ids=['p-market','p-jobs','p-realty','p-biz','p-comm','p-donate'];
@@ -5105,6 +5261,9 @@ function switchMain(btn,pid){
   document.getElementById(pid).classList.add('on');
   if(pid==='p-comm' && window.loadCommunity) window.loadCommunity();
   if(pid==='p-market' && window.loadListings) window.loadListings();
+  if(pid==='p-jobs' && window.loadBoard){ window.loadBoard('job'); window.loadBoard('lesson'); }
+  if(pid==='p-realty' && window.loadBoard) window.loadBoard('realty');
+  if(pid==='p-biz' && window.loadBoard) window.loadBoard('biz');
 }
 function switchMainById(pid){
   var ids=['p-market','p-jobs','p-realty','p-biz','p-comm','p-donate'];
