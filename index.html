@@ -709,7 +709,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
           // 내 마켓 매물 개수 (판매내역과 동일 기준)
           var lq = query(collection(db,'listings'), where('userId','==',cu.uid), limit(50));
           var ls = await getDocs(lq).catch(function(){return {docs:[]};});
-          var selling = ls.docs.filter(function(d){ var b=d.data().boardType; return !b||b==='market'; }).length;
+          var selling = ls.docs.filter(function(d){ var b=d.data().boardType; return b!=='donate'&&b!=='job'&&b!=='lesson'&&b!=='realty'&&b!=='biz'; }).length;
           var st = document.getElementById('statSelling');
           if(st) st.textContent = selling;
           // 거래횟수
@@ -952,6 +952,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       var ref = await addDoc(collection(db,'listings'), {
         userId: cu.uid,
         sellerNickname: (window._userProfile && window._userProfile.nickname) || '이웃',
+        sellerAvatar: (function(){try{return localStorage.getItem('om_avatar')||'';}catch(e){return '';}})(),
         boardType: window._donateMode ? 'donate' : 'market',
         title: title,
         price: price ? Number(price) : 0,
@@ -1055,7 +1056,7 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
       const list = snap.docs
         .map(d=>({id:d.id,...d.data()}))
         .filter(function(l){ return blocked.indexOf(l.userId) < 0; })
-        .filter(function(l){ return !l.boardType || l.boardType==='market'; })
+        .filter(function(l){ return l.boardType!=='donate' && l.boardType!=='job' && l.boardType!=='lesson' && l.boardType!=='realty' && l.boardType!=='biz'; })
         .filter(function(l){ return !catFilter || (l.category && l.category.indexOf(catFilter) >= 0); })
         .sort((a,b)=>{
           if(a.isBoost&&!b.isBoost) return -1;
@@ -1107,6 +1108,26 @@ body{font-family:'DM Sans','Noto Sans KR',sans-serif;background:#16100C;
 
   function _loadDetail(l) {
     var setTxt = function(id, txt){ var el=document.getElementById(id); if(el) el.textContent=txt; };
+    // 옛날 하드코딩 썸네일 숨기기
+    var oldStrip = document.getElementById('dOldStrip');
+    if (oldStrip) oldStrip.style.display = 'none';
+    // 판매자 아바타 - 본인 매물이면 내 사진
+    var sellerAv = document.getElementById('dSellerAv');
+    if (sellerAv) {
+      var cu = window._currentUser || (window._auth && window._auth.currentUser);
+      var myAv = null;
+      try { myAv = localStorage.getItem('om_avatar'); } catch(e){}
+      if (cu && l.userId===cu.uid && myAv) {
+        sellerAv.textContent='';
+        sellerAv.style.background='url('+myAv+') center/cover';
+      } else if (l.sellerAvatar) {
+        sellerAv.textContent='';
+        sellerAv.style.background='url('+l.sellerAvatar+') center/cover';
+      } else {
+        sellerAv.style.background='';
+        sellerAv.textContent=(l.sellerNickname||'?').charAt(0);
+      }
+    }
     setTxt('dTitle', l.title || '');
     setTxt('dPrice', l.isFree ? '무료 나눔' : ('$' + (l.price||0).toLocaleString()));
     setTxt('dDesc', l.description || '');
@@ -1717,12 +1738,18 @@ window.searchListings = async function() {
       if (saved.length === 0) return [];
       if (!window._listingStore) window._listingStore = {};
       var items = [];
-      for (var i = 0; i < Math.min(saved.length, 15); i++) {
+      var validIds = [];
+      for (var i = 0; i < saved.length; i++) {
         var id = saved[i];
+        if (String(id).indexOf('demo')===0) continue; // 데모 제외
         var l = window._listingStore[id];
         if (!l) { try { var snap = await getDoc(doc(db,'listings',id)); if (snap.exists()) { l = Object.assign({id:snap.id}, snap.data()); window._listingStore[id]=l; } } catch(e){} }
-        if (l) items.push(l);
+        if (l) { items.push(l); validIds.push(id); }
       }
+      // 유효한 것만 저장 + 카운트 갱신
+      try { localStorage.setItem(key, JSON.stringify(validIds)); } catch(e){}
+      var svStat = document.getElementById('statSaved');
+      if (svStat) svStat.textContent = validIds.length;
       return items.map(function(l){
         var row = document.createElement('div');
         row.style.cssText = 'display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer;background:#fff';
@@ -1764,7 +1791,7 @@ window.searchListings = async function() {
         var q = query(collection(db,'listings'), where('userId','==',cu2.uid), limit(30));
         var snap = await getDocs(q).catch(function(){return {docs:[]};});
         var listings = snap.docs.map(function(d){return Object.assign({id:d.id},d.data());})
-          .filter(function(l){ return !l.boardType || l.boardType==='market'; })
+          .filter(function(l){ return l.boardType!=='donate' && l.boardType!=='job' && l.boardType!=='lesson' && l.boardType!=='realty' && l.boardType!=='biz'; })
           .sort(function(a,b){return ((b.createdAt&&b.createdAt.seconds)||0)-((a.createdAt&&a.createdAt.seconds)||0);});
         return listings.map(function(l){
           var date = (l.createdAt&&l.createdAt.seconds)?new Date(l.createdAt.seconds*1000).toLocaleDateString('ko-KR'):'';
@@ -3219,7 +3246,7 @@ window.searchListings = async function() {
     
     <div class="sech"><div class="secht" id="secTitle-donate" style="color:var(--ink);font-weight:800">전체 <span style="font-size:12px;font-weight:600;color:var(--muted)">All</span></div>
     
-    <button onclick="showSc('write')" style="background:var(--or);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:inherit;white-space:nowrap">+ 등록</button></div>
+    <button onclick="window._donateMode=true;showSc('write')" style="background:var(--or);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:inherit;white-space:nowrap">+ 등록</button></div>
     <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="showSc('detail')"><div class="cth th-plnt"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#5B8A3C;stroke-width:1.5;stroke-linecap:round"><path d="M12 22V12"/><path d="M12 12C12 12 7 10 7 6a5 5 0 0 1 10 0c0 4-5 6-5 6z"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(91,138,60,.1);color:#3A6B20;">식물 Plants</div><div class="ctitle">몬스테라 화분 (대형)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>라구나힐스 &#183; 2시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
     <div class="don-wrap"><div class="free-badge">FREE</div><div class="card" onclick="showSc('detail')"><div class="cth th-baby"><svg viewBox="0 0 24 24" style="width:27px;height:27px;fill:none;stroke:#B0405A;stroke-width:1.5;stroke-linecap:round"><path d="M9 12H5a2 2 0 0 0-2 2v6h18v-6a2 2 0 0 0-2-2h-4"/><circle cx="12" cy="6" r="4"/></svg></div><div class="cbody"><div class="cbadge" style="background:rgba(176,64,90,.1);color:#8B2040;">유아동/장난감 Baby &amp; Kids</div><div class="ctitle">아기 옷 묶음 (0&#8211;6개월)</div><div class="cloc"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>얼바인 &#183; 4시간 전</div><div class="cprice free">무료 나눔</div></div></div></div>
     <div class="iad" onclick="showSc('ad-info')"><div class="iad-ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21.4 8 14 2 9.4h7.6z"/></svg></div><div><div class="iad-sp">&#127818; 오렌지 픽</div><div class="iad-t">이웃 나눔 더 보기</div><div class="iad-s">무료 나눔 · 얼바인</div></div><div class="iad-arr">›</div></div>
@@ -3906,7 +3933,7 @@ window.searchListings = async function() {
     <svg style="width:80px;height:80px;fill:none;stroke:#4A90D9;stroke-width:.9;stroke-linecap:round" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
     <div class="ph-cnt-b">1 / 10</div>
   </div>
-  <div class="ph-strip">
+  <div class="ph-strip" id="dOldStrip">
     <div class="pth th-elec sel"><svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:#4A90D9;stroke-width:1.5"><rect x="2" y="3" width="20" height="14" rx="2"/></svg></div>
     <div class="pth th-furn"><svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:#8B7355;stroke-width:1.5"><rect x="2" y="7" width="20" height="11" rx="2"/></svg></div>
     <div class="pth pth-add">+</div>
@@ -4217,10 +4244,12 @@ window.searchListings = async function() {
     <span class="sbar-t">채팅 목록</span>
     <span></span>
   </div>
-  <div id="chatListContainer" style="flex:1;overflow-y:auto;background:var(--cream)">
-    <div style="text-align:center;padding:60px 20px;color:var(--muted)">
+  <div id="chatListContainer" style="flex:1;overflow-y:auto;background:var(--cream);min-height:0">
+    <div style="text-align:center;padding:50px 20px;color:var(--muted)">
       <div style="font-size:40px;margin-bottom:12px">💬</div>
-      <div style="font-size:15px;font-weight:700;color:var(--mid)">로딩 중...</div>
+      <div style="font-size:15px;font-weight:700;color:var(--mid)">아직 채팅이 없어요</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">관심 있는 매물에서 대화를 시작해보세요</div>
+      <button onclick="goHome()" style="margin-top:20px;padding:11px 24px;background:var(--or);border:none;border-radius:22px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">홈으로 가기</button>
     </div>
   </div>
 </div>
@@ -4232,7 +4261,7 @@ window.searchListings = async function() {
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
     <span class="sbar-t">My Listings</span>
-    <button onclick="showSc('write')" style="background:none;border:none;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ 등록</button>
+    <button onclick="window._donateMode=true;showSc('write')" style="background:none;border:none;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ 등록</button>
   </div>
   <div id="myListings" style="flex:1;overflow-y:auto;background:var(--cream)">
     <div style="text-align:center;padding:60px 20px;color:var(--muted)">로딩 중...</div>
@@ -4297,7 +4326,7 @@ window.searchListings = async function() {
   <div class="sbar">
     <button class="back-btn" onclick="showSc('profile')"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
     <span class="sbar-t">My Listings</span>
-    <button onclick="showSc('write')" style="background:none;border:none;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ 등록</button>
+    <button onclick="window._donateMode=true;showSc('write')" style="background:none;border:none;color:var(--or);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ 등록</button>
   </div>
   <div id="myListings" style="flex:1;overflow-y:auto;background:var(--cream)">
     <div style="text-align:center;padding:60px;color:var(--muted)">로딩 중...</div>
@@ -5902,4 +5931,4 @@ function closeModal(){document.getElementById('modalBg').classList.remove('open'
 </script>
 </body>
 
-</html>
+</html>>
